@@ -1,0 +1,92 @@
+import fs from "fs";
+import * as nostr from "nostr-tools";
+
+const RELAYS = [
+  "wss://relay.damus.io",
+  "wss://relay.nostr.band"
+];
+
+const PUBLISHED_FILE = "./published.json";
+const AUTHOR_PRIVATE_KEY = "YOUR_PRIVATE_KEY_HERE"; // hex string
+const pubkey = nostr.getPublicKey(AUTHOR_PRIVATE_KEY);
+
+let published = { posts: [] };
+if (fs.existsSync(PUBLISHED_FILE)) {
+  published = JSON.parse(fs.readFileSync(PUBLISHED_FILE, "utf-8"));
+}
+
+// connect to all relays
+async function connectRelays() {
+  const relayObjs = RELAYS.map(url => {
+    const r = nostr.relayInit(url);
+    r.on("connect", () => console.log(`✅ Connected to ${url}`));
+    r.on("error", () => console.warn(`⚠️ Failed to connect ${url}`));
+    return r;
+  });
+
+  await Promise.all(relayObjs.map(r => r.connect().catch(() => {})));
+  return relayObjs;
+}
+
+// fetch articles by pubkey
+async function fetchArticles() {
+  const relays = await connectRelays();
+  const since = Math.floor(Date.now() / 1000) - 5 * 365 * 24 * 60 * 60; // last 5 years
+  const events = [];
+
+  for (const relay of relays) {
+    try {
+      const sub = relay.sub([{ kinds: [30023], authors: [pubkey], since }]);
+      sub.on("event", (ev) => {
+        console.log(`📌 Found event ${ev.id}`);
+        events.push({ id: ev.id, created_at: ev.created_at });
+      });
+      await new Promise(r => setTimeout(r, 2000)); // wait 2s for events
+      sub.unsub();
+    } catch (err) {
+      console.warn(`⚠️ Failed fetching from ${relay.url}:`, err.message);
+    }
+  }
+
+  return events;
+}
+
+// save to published.json
+function savePublished(events) {
+  published.posts = events;
+  fs.writeFileSync(PUBLISHED_FILE, JSON.stringify(published, null, 2));
+  console.log(`💾 Saved ${events.length} events to ${PUBLISHED_FILE}`);
+}
+
+// delete a note by id
+async function deleteNote(noteId) {
+  const relays = await connectRelays();
+  const deleteEvent = {
+    kind: 5, // deletion event
+    pubkey,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [["e", noteId]],
+    content: ""
+  };
+  deleteEvent.id = nostr.getEventHash(deleteEvent);
+  deleteEvent.sig = nostr.signEvent(deleteEvent, AUTHOR_PRIVATE_KEY);
+
+  for (const relay of relays) {
+    try {
+      relay.publish(deleteEvent);
+      console.log(`🗑️ Sent delete request for ${noteId} to ${relay.url}`);
+    } catch (err) {
+      console.warn(`⚠️ Failed delete on ${relay.url}:`, err.message);
+    }
+  }
+}
+
+// run script
+(async () => {
+  const events = await fetchArticles();
+  savePublished(events);
+
+  // Example: delete first event
+  // if (events.length > 0) await deleteNote(events[0].id);
+})();
+

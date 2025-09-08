@@ -1,0 +1,37 @@
+{
+  "name": "hugo2nostr",
+  "version": "0.0.1",
+  "description": "Transfer all hugo blog posts to nostr network",
+  "type": "module",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/delirehberi/nostr2relay.git"
+  },
+  "keywords": [
+    "nostr",
+    "hugo"
+  ],
+  "author": "Emre Yilmaz <z@emre.xyz>",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/delirehberi/nostr2relay/issues"
+  },
+  "homepage": "https://github.com/delirehberi/nostr2relay#readme",
+  "scripts": {
+    "publish": "node index.js",
+    "dry-run": "DRY_RUN=1 node index.js",
+    "debug": "node debug.js",
+    "delete": "node delete.js"
+
+  },
+  "dependencies": {
+    "nostr-tools": "^2.7.0",
+    "gray-matter": "^4.0.3",
+    "toml": "^3.0.0",
+    "glob": "^11.0.0",
+    "crypto": "*",
+    "ws": "*"
+
+  }
+}
