@@ -17,6 +17,9 @@ This project allows you to **publish your Hugo blog posts to the Nostr network**
 - Supports multiple relays and continues if one relay fails.
 - Environment variable configuration for flexibility.
 - Store all published events in markdown files as metadata (nostr_id).
+- Fetch and sync posts from Nostr back to Hugo if not exists in hugo
+- Delete specific articles by adding `delete: true` in the post frontmatter
+- Update relay list and change nevent id from frontmatter. 
 
 
 ---
@@ -126,7 +129,16 @@ npm run delete
 `npm run debug`
 
 # 4. Delete all articles if needed
+`npm run delete-all`
+
+# 5. Delete specific articles by adding `delete` metadata in the post frontmatter 
 `npm run delete`
+
+# 6. Sync posts from nostr network to hugo 
+`npm run sync`
+
+# 7. Update relay list and nevent id from frontmatter
+`npm run update`
 
 ---
 

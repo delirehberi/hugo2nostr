@@ -22,7 +22,10 @@
     "publish": "node index.js",
     "dry-run": "DRY_RUN=1 node index.js",
     "debug": "node debug.js",
-    "delete": "node delete.js"
+    "delete": "node delete.js",
+    "delete-all": "node delete-all.js",
+    "sync": "node toHugo.js",
+    "update": "node update-relays.js"
 
   },
   "dependencies": {
