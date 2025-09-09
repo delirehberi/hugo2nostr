@@ -12,7 +12,6 @@ This project allows you to **publish your Hugo blog posts to the Nostr network**
   - TOML (`+++`)
 - Normalize tags and dates automatically.
 - Dry-run mode to preview events before publishing.
-- Keep a `published.json` log to avoid publishing duplicates.
 - Debug script to fetch existing articles from relays.
 - Delete script to send deletion events for all articles.
 - Supports multiple relays and continues if one relay fails.
@@ -49,7 +48,6 @@ export NOSTR_PRIVATE_KEY="nsecXXX"
 ```
 
 Copy `.env.example` to `.env` and modify as needed.
-Copy `published.json.dist` to `published.json` to start tracking published posts.
 
 ---
 
@@ -70,7 +68,6 @@ npm run publish
 * Reads all Markdown files in `POSTS_DIR`.
 * Normalizes dates (default time `08:00` if missing).
 * Parses tags (comma or space separated, strips `#` if present).
-* Avoids republishing already published posts using `published.json`.
 * Supports dry-run mode:
 
 ```bash
@@ -81,7 +78,7 @@ npm run dry-run
 
 ### 2. `debug.js` – Fetch existing articles
 
-Fetches all existing `kind:30023` articles by your pubkey from configured relays and stores them in `published.json`.
+Fetches all existing `kind:30023` articles by your pubkey from configured relays. 
 
 **Command:**
 
@@ -92,14 +89,13 @@ npm run debug
 **Behavior:**
 
 * Connects to all relays in `RELAY_LIST`.
-* Stores each found event ID and timestamp in `published.json`.
 * Continues fetching even if a relay fails.
 
 ---
 
 ### 3. `delete.js` – Delete articles
 
-Sends a Nostr deletion event (`kind:5`) for all articles in `published.json`.
+Sends a Nostr deletion event (`kind:5`) for all articles.
 
 **Command:**
 
