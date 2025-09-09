@@ -17,7 +17,8 @@ const {  getEventHash } = nostr
 useWebSocketImplementation(WebSocket)
 // CONFIG
 const POSTS_DIR = process.env.POSTS_DIR || "./posts";
-const RELAYS = process.env.RELAY_LIST.split(",") || ["wss://relay.damus.io", "wss://relay.nostr.band"];
+const RELAYS = process.env.RELAY_LIST.split(",")
+console.log("Using relays:", RELAYS);
 const NOSTR_PRIVATE_KEY = process.env.NOSTR_PRIVATE_KEY; 
 let { type, data } = nip19.decode(NOSTR_PRIVATE_KEY);
 const AUTHOR_PRIVATE_KEY = bytesToHex(data);
@@ -66,9 +67,39 @@ function normalizeTags(tags) {
     .map((t) => t.replace(/^#/, "").trim())
     .filter(Boolean);
 }
-function hashContent(content) {
-    return crypto.createHash("sha256").update(content).digest("hex");
+
+function updateFrontmatter(file, raw, meta, nostrId) {
+    if (raw.startsWith("---")) {
+        // YAML frontmatter
+        const parsed = matter(raw);
+        parsed.data.nostr_id = nostrId; // add or update
+        const updated = matter.stringify(parsed.content, parsed.data);
+        fs.writeFileSync(file, updated, "utf-8");
+
+    } else if (raw.startsWith("+++")) {
+        // TOML frontmatter
+        const fm = raw.substring(3, raw.indexOf("+++", 3));
+        const body = raw.substring(raw.indexOf("+++", 3) + 3).trim();
+
+        let data = toml.parse(fm);
+        data.nostr_id = nostrId;
+
+        // Reconstruct TOML + body
+        let newFm = Object.entries(data)
+            .map(([k, v]) => {
+                if (Array.isArray(v)) return `${k} = [${v.map(x => `"${x}"`).join(", ")}]`;
+                if (typeof v === "string") return `${k} = "${v}"`;
+                return `${k} = ${v}`;
+            })
+            .join("\n");
+
+        const updated = `+++\n${newFm}\n+++\n\n${body}\n`;
+        fs.writeFileSync(file, updated, "utf-8");
+    } else {
+        console.warn(`⚠️ Could not update frontmatter for ${file}, unknown format`);
+    }
 }
+
 function parseFrontmatter(content) {
     if (content.startsWith("---")) {
         // YAML-like frontmatter
@@ -99,6 +130,18 @@ async function publishToNostr(event) {
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+function getSummary(content) {
+  if (!content) return "";
+
+  // Normalize line endings
+  const text = content.replace(/\r\n/g, "\n").trim();
+
+  // Split by blank lines
+  const paragraphs = text.split(/\n/);
+
+  // Return the first non-empty paragraph
+  return paragraphs.length > 0 ? paragraphs[0].trim() : "";
+}
 
 async function main() {
     console.log(`Searching files in ${POSTS_DIR}`);
@@ -115,12 +158,16 @@ async function main() {
         const date = normalizeDate(meta.date || new Date().toISOString());
         let tagsArray = [
                 ["title", title],
+                ["author", "z@emre.xyz"],
                 ...tags.map((t) => ["t", t]),
             ];
         if (description!=="") {
             tagsArray.push(["summary", description]);
         }
         let content = meta.body || "";
+        content = content.replace(/<!--more-->/g, "").trim();
+        const summary = getSummary(content);
+
         let created_at = Math.floor(new Date(date).getTime() / 1000);
         const now = Math.floor(Date.now() / 1000);
 
@@ -135,6 +182,7 @@ async function main() {
             created_at: created_at,
             tags: tagsArray,
             content: content,
+            summary: summary
         };
         const signedEvent = finalizeEvent(nostrEvent, AUTHOR_PRIVATE_KEY);
 
@@ -143,7 +191,6 @@ async function main() {
         } else {
             const published = JSON.parse(fs.readFileSync("published.json", "utf-8"));
 
-            const contentHash = hashContent(meta.body + title);
 
             const alreadyPublished = published.posts.find(
                 (p) => p.title === title
@@ -157,6 +204,7 @@ async function main() {
             console.log(`🚀 Publishing "${title}" (${file})`);
             try{
                 await publishToNostr(signedEvent);
+                updateFrontmatter(file, raw, meta, signedEvent.id);
 
                 published.posts.push({
                     title: title,

@@ -12,6 +12,7 @@ import {SimplePool} from "nostr-tools/pool";
 
 
 const RELAYS = process.env.RELAY_LIST.split(",") || ["wss://relay.damus.io", "wss://relay.nostr.band"];
+console.log("Using relays:", RELAYS);
 const NOSTR_PRIVATE_KEY = process.env.NOSTR_PRIVATE_KEY; 
 let { type, data } = nip19.decode(NOSTR_PRIVATE_KEY);
 const AUTHOR_PRIVATE_KEY = bytesToHex(data);
