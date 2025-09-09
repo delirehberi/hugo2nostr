@@ -15,6 +15,9 @@ This project allows you to **publish your Hugo blog posts to the Nostr network**
 - Debug script to fetch existing articles from relays.
 - Delete script to send deletion events for all articles.
 - Supports multiple relays and continues if one relay fails.
+- Environment variable configuration for flexibility.
+- Store all published events in markdown files as metadata (nostr_id).
+
 
 ---
 
@@ -144,4 +147,5 @@ npm run delete
 * fs (built-in)
 * dotenv (optional, for `.env` support)
 
-
+## Contributing
+Feel free to open issues or submit pull requests for improvements or bug fixes.
