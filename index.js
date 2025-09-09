@@ -52,6 +52,14 @@ function normalizeDate(dateStr) {
         return new Date().toISOString();
     }
 }
+//convert iso to "2013-10-15T14:39:55-04:00"
+function ISO2Date(isoString) {
+    const date = new Date(isoString);
+    const tzOffset = -date.getTimezoneOffset();
+    const diff = tzOffset >= 0 ? '+' : '-';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${diff}${pad(Math.floor(Math.abs(tzOffset) / 60))}:${pad(Math.abs(tzOffset) % 60)}`;
+}
 
 function normalizeTags(tags) {
   if (!tags) return [];
@@ -69,10 +77,15 @@ function normalizeTags(tags) {
 }
 
 function updateFrontmatter(file, raw, meta, nostrId) {
+    function updateData(data) {
+        data.nostr_id = nip19.neventEncode({ id: nostrId, relays: [RELAYS[0],RELAYS[1]], kind: 30023 });
+        data.date = ISO2Date(meta.date || new Date().toISOString());
+        return data;
+    }
     if (raw.startsWith("---")) {
         // YAML frontmatter
         const parsed = matter(raw);
-        parsed.data.nostr_id = nostrId; // add or update
+        parsed.data=updateData(parsed.data);
         const updated = matter.stringify(parsed.content, parsed.data);
         fs.writeFileSync(file, updated, "utf-8");
 
@@ -82,7 +95,7 @@ function updateFrontmatter(file, raw, meta, nostrId) {
         const body = raw.substring(raw.indexOf("+++", 3) + 3).trim();
 
         let data = toml.parse(fm);
-        data.nostr_id = nostrId;
+        data = updateData(data);
 
         // Reconstruct TOML + body
         let newFm = Object.entries(data)
@@ -120,11 +133,29 @@ function parseFrontmatter(content) {
 }
 
 async function publishToNostr(event) {
-    await sleep(4000);
-    const pool = new SimplePool();
-
-    await Promise.all(pool.publish(RELAYS,event));
-    console.log(`Event sent to all relays via SimplePool.`);
+    try{
+        await sleep(4000);
+        const pool = new SimplePool();
+        pool.trackRelays = true;
+        await Promise.all(pool.publish(RELAYS,event).map(async (promise) => {
+            try {
+                await promise;
+                console.log(`✅ Event ${event.id} accepted by relay`);
+            } catch (err) {
+                console.warn(`⚠️ Event ${event.id} rejected by relay:`, err);
+            }     
+        }));
+        let seenon = pool.seenOn.get(event.id);//Set<AbstractRelay>
+        let relays = [];
+        for (const r of seenon.values()) {
+            relays.push(r.url);
+            console.log(`✅ Event seen on relay: ${r.url}`);
+        }
+        console.log(`Event sent to all relays via SimplePool.`);
+        return relays;
+    }catch(err){
+        console.log(err);
+    }
 }
 
 function sleep(ms) {
@@ -159,6 +190,8 @@ async function main() {
         let tagsArray = [
                 ["title", title],
                 ["author", "z@emre.xyz"],
+                ["blog_url", `https://emre.xyz/posts/${file.replace(/^.*[\\\/]/, '').replace(/\.md$/, '')}`],
+                ["d", file.replace(/^.*[\\\/]/, '').replace(/\.md$/, '')],
                 ...tags.map((t) => ["t", t]),
             ];
         if (description!=="") {
@@ -171,10 +204,10 @@ async function main() {
         let created_at = Math.floor(new Date(date).getTime() / 1000);
         const now = Math.floor(Date.now() / 1000);
 
-        const oneYearAgo = now - 365 * 24 * 60 * 60;
-        if (created_at < oneYearAgo) {
-            created_at = oneYearAgo;
-            content = `*Original date ${date}*\n\n` + content;
+        const twoYearsAgo = now - (365*2) * 24 * 60 * 60;
+        if (created_at < twoYearsAgo) {
+            created_at = twoYearsAgo;
+            content = `*Original date ${date}* \n\n` + content;
         }
 
         const nostrEvent = {
@@ -187,15 +220,10 @@ async function main() {
         const signedEvent = finalizeEvent(nostrEvent, AUTHOR_PRIVATE_KEY);
 
         if (DRY_RUN) {
-            console.log("📝 Dry-run event:", JSON.stringify(nostrEvent, null, 2));
+            console.log("📝 Dry-run event:", JSON.stringify(signedEvent, null, 2));
         } else {
-            const published = JSON.parse(fs.readFileSync("published.json", "utf-8"));
 
-
-            const alreadyPublished = published.posts.find(
-                (p) => p.title === title
-            );
-
+            const alreadyPublished = meta.nostr_id && meta.nostr_id.length === 63 && meta.nostr_id.startsWith("nevent1"); 
             if (alreadyPublished) {
                 console.log(`⚠️ Skipping already published post: ${file}`);
                 continue; // skip this post
@@ -203,16 +231,15 @@ async function main() {
 
             console.log(`🚀 Publishing "${title}" (${file})`);
             try{
-                await publishToNostr(signedEvent);
+                let xRelays = await publishToNostr(signedEvent);
                 updateFrontmatter(file, raw, meta, signedEvent.id);
 
                 published.posts.push({
                     title: title,
                     id: signedEvent.id,
-                    relays: RELAYS,
+                    relays: xRelays
                 });
 
-                fs.writeFileSync("published.json", JSON.stringify(published, null, 2));
             }catch(err){
                 console.error(`❌ Failed to publish "${title}":`, err);
             }

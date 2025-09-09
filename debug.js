@@ -23,7 +23,10 @@ async function fetchArticles() {
     let pool = new SimplePool();
     const since = Math.floor(Date.now() / 1000) - 5 * 365 * 24 * 60 * 60; // last 5 years
     let events = await pool.querySync(RELAYS, { kinds: [30023] , authors: [pubkey], since})
-    console.dir(events[0].tags)
+    if(events.length === 0){
+        console.log("No events found");
+        return [];
+    }
     const simplified = events.map(ev => {
         let key, title;
     try {
