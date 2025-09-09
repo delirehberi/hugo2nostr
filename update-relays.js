@@ -29,8 +29,10 @@ function stringifyFrontmatter(data, body, type) {
   delete fmData.body;
 
   if (type === "yaml") {
+    delete fmData.type;
     return matter.stringify(body, fmData);
   } else if (type === "toml") {
+    delete fmData.type;
     let newFm = Object.entries(fmData)
       .map(([k, v]) => {
         if (Array.isArray(v)) return `${k} = [${v.map((x) => `"${x}"`).join(", ")}]`;
