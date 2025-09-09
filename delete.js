@@ -20,14 +20,44 @@ console.log("Using relays:", RELAYS);
 const NOSTR_PRIVATE_KEY = process.env.NOSTR_PRIVATE_KEY; 
 let { type, data } = nip19.decode(NOSTR_PRIVATE_KEY);
 const AUTHOR_PRIVATE_KEY = bytesToHex(data);
+const POSTS_DIR = process.env.POSTS_DIR || "./posts";
 
-const PUBLISHED_FILE = "./published.json";
+function parseFrontmatter(content) {
+    if (content.startsWith("---")) {
+        // YAML-like frontmatter
+        const parsed = matter(content);
+        return {
+            ...parsed.data,
+            body: parsed.content,
+        };
+    } else if (content.startsWith("+++")) {
+        // TOML-like frontmatter
+        const fm = content.substring(3, content.indexOf("+++", 3));
+        const body = content.substring(content.indexOf("+++", 3) + 3).trim();
+        const data = toml.parse(fm);
+        return { ...data, body };
+    } else {
+        return { title: "Untitled", date: new Date().toISOString(), body: content };
+    }
+}
+
 const pubkey = getPublicKey(AUTHOR_PRIVATE_KEY);
 
+
 let published = { posts: [] };
-if (fs.existsSync(PUBLISHED_FILE)) {
-  published = JSON.parse(fs.readFileSync(PUBLISHED_FILE, "utf-8"));
-}
+const files = glob.sync(`${POSTS_DIR}/*.md`);
+    for (const file of files) {
+        const raw = fs.readFileSync(file, "utf-8");
+        const meta = parseFrontmatter(raw);
+        const alreadyPublished = meta.nostr_id && meta.nostr_id.length === 63 && meta.nostr_id.startsWith("nevent1"); 
+        if(alreadyPublished){
+            published.posts.push({ 
+                id: meta.nostr_id, 
+                title: meta.title || "Untitled" ,
+                file: file
+            });
+        }
+    }
 
 // delete a note by id
 async function deleteNote(noteId) {
@@ -65,13 +95,58 @@ async function deleteNote(noteId) {
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+function updateFrontmatter(file) {
+    let raw = fs.readFileSync(file, "utf-8");
+
+    function updateData(data) {
+        data.nostr_id = "";
+        return data;
+    }
+    if (raw.startsWith("---")) {
+        // YAML frontmatter
+        const parsed = matter(raw);
+        parsed.data=updateData(parsed.data);
+        const updated = matter.stringify(parsed.content, parsed.data);
+        fs.writeFileSync(file, updated, "utf-8");
+
+    } else if (raw.startsWith("+++")) {
+        // TOML frontmatter
+        const fm = raw.substring(3, raw.indexOf("+++", 3));
+        const body = raw.substring(raw.indexOf("+++", 3) + 3).trim();
+
+        let data = toml.parse(fm);
+        data = updateData(data);
+
+        // Reconstruct TOML + body
+        let newFm = Object.entries(data)
+            .map(([k, v]) => {
+                if (Array.isArray(v)) return `${k} = [${v.map(x => `"${x}"`).join(", ")}]`;
+                if (typeof v === "string") return `${k} = "${v}"`;
+                return `${k} = ${v}`;
+            })
+            .join("\n");
+
+        const updated = `+++\n${newFm}\n+++\n\n${body}\n`;
+        fs.writeFileSync(file, updated, "utf-8");
+    } else {
+        console.warn(`⚠️ Could not update frontmatter for ${file}, unknown format`);
+    }
+}
 // run script
 for (const post of published.posts) {
     try{
         console.log(post.id, post.title); 
-        await deleteNote(post.id);
-        published.posts = published.posts.filter(p => p.id !== post.id);
-        fs.writeFileSync(PUBLISHED_FILE, JSON.stringify(published, null, 2));
+
+        let {eventType, data}= nip19.decode(post.id);
+        if(eventType !== "nevent"){
+            console.error("Invalid note id", post.id);
+            continue;
+        }
+
+        await deleteNote(data.id);
+        //update frontMatter 
+        updateFrontmatter(post.file);
         await sleep(5000);
     }catch(e){
         console.error("Error deleting post", post.id, e);
