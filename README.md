@@ -31,7 +31,7 @@ Example `.env` file:
 # Path to Hugo posts
 POSTS_DIR="FULLPATH_PROJECT_DIR/content/posts"
 
-# Space-separated list of relays
+# Comma-separated list of relays
 RELAY_LIST="wss://relay.emre.xyz"
 
 # Dry-run mode (1 = enable, 0 = disable)
