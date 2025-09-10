@@ -25,14 +25,21 @@
     "delete": "node src/index.js delete",
     "delete-all": "node src/index.js delete-all",
     "sync": "node src/index.js sync",
-    "update": "node src/index.js update"
+    "update": "node src/index.js update",
+    "test": "jest"
   },
   "dependencies": {
-    "nostr-tools": "^2.7.0",
-    "gray-matter": "^4.0.3",
-    "toml": "^3.0.0",
-    "glob": "^11.0.0",
     "crypto": "*",
+    "glob": "^11.0.0",
+    "gray-matter": "^4.0.3",
+    "nostr-tools": "^2.7.0",
+    "toml": "^3.0.0",
     "ws": "*"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.4",
+    "@babel/preset-env": "^7.28.3",
+    "babel-jest": "^30.1.2",
+    "jest": "^30.1.3"
   }
 }
