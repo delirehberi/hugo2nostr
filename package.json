@@ -19,14 +19,13 @@
   },
   "homepage": "https://github.com/delirehberi/nostr2relay#readme",
   "scripts": {
-    "publish": "node index.js",
-    "dry-run": "DRY_RUN=1 node index.js",
-    "debug": "node debug.js",
-    "delete": "node delete.js",
-    "delete-all": "node delete-all.js",
-    "sync": "node toHugo.js",
-    "update": "node update-relays.js"
-
+    "publish": "node src/index.js publish",
+    "dry-run": "DRY_RUN=1 node src/index.js publish",
+    "debug": "node src/index.js debug",
+    "delete": "node src/index.js delete",
+    "delete-all": "node src/index.js delete-all",
+    "sync": "node src/index.js sync",
+    "update": "node src/index.js update"
   },
   "dependencies": {
     "nostr-tools": "^2.7.0",
@@ -35,6 +34,5 @@
     "glob": "^11.0.0",
     "crypto": "*",
     "ws": "*"
-
   }
 }

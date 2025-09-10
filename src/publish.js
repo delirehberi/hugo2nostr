@@ -3,78 +3,12 @@ import matter from "gray-matter";
 import toml from "toml";
 import {glob} from "glob";
 import * as nostr from "nostr-tools";
-import crypto from "crypto";
-import {getPublicKey,finalizeEvent} from "nostr-tools/pure";
-import {Relay} from "nostr-tools/relay";
-import { bytesToHex, hexToBytes } from '@noble/hashes/utils' // already an installed dependency
+import {finalizeEvent} from "nostr-tools/pure";
 import * as nip19 from 'nostr-tools/nip19'
-import {SimplePool} from "nostr-tools/pool";
-import { useWebSocketImplementation } from 'nostr-tools/pool'
-import WebSocket from 'ws'
+import { publishToNostr, ISO2Date, normalizeTags,normalizeDate,getSummary } from "./utils.js";
+import { RELAYS, POSTS_DIR, NOSTR_PRIVATE_KEY, AUTHOR_PRIVATE_KEY, DRY_RUN , pubkey,init} from "./init.js";
 
-
-const {  getEventHash } = nostr
-useWebSocketImplementation(WebSocket)
-// CONFIG
-const POSTS_DIR = process.env.POSTS_DIR || "./posts";
-const RELAYS = process.env.RELAY_LIST.split(",")
-console.log("Using relays:", RELAYS);
-const NOSTR_PRIVATE_KEY = process.env.NOSTR_PRIVATE_KEY; 
-let { type, data } = nip19.decode(NOSTR_PRIVATE_KEY);
-const AUTHOR_PRIVATE_KEY = bytesToHex(data);
-
-const DRY_RUN = process.env.DRY_RUN === "1";
-const pubkey = getPublicKey(AUTHOR_PRIVATE_KEY);
-
-if (!DRY_RUN && !AUTHOR_PRIVATE_KEY) {
-    console.error("❌ Please set NOSTR_PRIVATE_KEY env variable.");
-    process.exit(1);
-}
-
-function normalizeDate(dateStr) {
-    try {
-        if (!dateStr) throw new Error("No date provided");
-
-        // If the date is already ISO format with time, just use it
-        const hasTime = /\d{2}:\d{2}/.test(dateStr);
-        let d = new Date(dateStr);
-
-        if (isNaN(d)) throw new Error("Invalid date");
-
-        // If no time, set default 08:00
-        if (!hasTime) {
-            d.setHours(8, 0, 0, 0);
-        }
-
-        return d.toISOString();
-    } catch {
-        console.warn("⚠️ Could not parse date:", dateStr);
-        return new Date().toISOString();
-    }
-}
-//convert iso to "2013-10-15T14:39:55-04:00"
-function ISO2Date(isoString) {
-    const date = new Date(isoString);
-    const tzOffset = -date.getTimezoneOffset();
-    const diff = tzOffset >= 0 ? '+' : '-';
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${diff}${pad(Math.floor(Math.abs(tzOffset) / 60))}:${pad(Math.abs(tzOffset) % 60)}`;
-}
-
-function normalizeTags(tags) {
-  if (!tags) return [];
-
-  if (Array.isArray(tags)) {
-    // Hugo sometimes parses YAML/TOML arrays automatically
-    return tags.map((t) => t.replace(/^#/, "").trim()).filter(Boolean);
-  }
-
-  // Split by commas or spaces (one or more)
-  return tags
-    .split(/[\s,]+/)
-    .map((t) => t.replace(/^#/, "").trim())
-    .filter(Boolean);
-}
+init();
 
 function updateFrontmatter(file, raw, meta, nostrId) {
     function updateData(data) {
@@ -132,49 +66,9 @@ function parseFrontmatter(content) {
     }
 }
 
-async function publishToNostr(event) {
-    try{
-        await sleep(4000);
-        const pool = new SimplePool();
-        pool.trackRelays = true;
-        await Promise.all(pool.publish(RELAYS,event).map(async (promise) => {
-            try {
-                await promise;
-                console.log(`✅ Event ${event.id} accepted by relay`);
-            } catch (err) {
-                console.warn(`⚠️ Event ${event.id} rejected by relay:`, err);
-            }     
-        }));
-        let seenon = pool.seenOn.get(event.id);//Set<AbstractRelay>
-        let relays = [];
-        for (const r of seenon.values()) {
-            relays.push(r.url);
-            console.log(`✅ Event seen on relay: ${r.url}`);
-        }
-        console.log(`Event sent to all relays via SimplePool.`);
-        return relays;
-    }catch(err){
-        console.log(err);
-    }
-}
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-function getSummary(content) {
-  if (!content) return "";
 
-  // Normalize line endings
-  const text = content.replace(/\r\n/g, "\n").trim();
-
-  // Split by blank lines
-  const paragraphs = text.split(/\n/);
-
-  // Return the first non-empty paragraph
-  return paragraphs.length > 0 ? paragraphs[0].trim() : "";
-}
-
-async function main() {
+export async function publish() {
     console.log(`Searching files in ${POSTS_DIR}`);
     const files = glob.sync(`${POSTS_DIR}/*.md`);
     console.log(`📚 Found ${files.length} posts`);
@@ -231,14 +125,8 @@ async function main() {
 
             console.log(`🚀 Publishing "${title}" (${file})`);
             try{
-                let xRelays = await publishToNostr(signedEvent);
+                await publishToNostr(signedEvent);
                 updateFrontmatter(file, raw, meta, signedEvent.id);
-
-                published.posts.push({
-                    title: title,
-                    id: signedEvent.id,
-                    relays: xRelays
-                });
 
             }catch(err){
                 console.error(`❌ Failed to publish "${title}":`, err);
@@ -246,6 +134,3 @@ async function main() {
         }
     }
 }
-
-main();
-

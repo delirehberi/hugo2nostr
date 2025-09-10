@@ -9,32 +9,11 @@ import { SimplePool } from "nostr-tools/pool";
 import { useWebSocketImplementation } from "nostr-tools/pool";
 import WebSocket from "ws";
 import {getPublicKey} from "nostr-tools/pure";
+import { parseFrontmatter, publishToNostr, ISO2Date, normalizeTags,normalizeDate,getSummary } from "./utils.js";
+import { RELAYS, POSTS_DIR, NOSTR_PRIVATE_KEY, AUTHOR_PRIVATE_KEY, DRY_RUN , pubkey,init} from "./init.js";
 
-useWebSocketImplementation(WebSocket);
+init();
 
-// CONFIG
-const POSTS_DIR = process.env.POSTS_DIR || "./posts";
-const RELAYS = process.env.RELAY_LIST.split(",");
-const NOSTR_PRIVATE_KEY = process.env.NOSTR_PRIVATE_KEY; 
-let { type, data } = nip19.decode(NOSTR_PRIVATE_KEY);
-const AUTHOR_PRIVATE_KEY = bytesToHex(data);
-const pubkey = getPublicKey(AUTHOR_PRIVATE_KEY);
-console.log("Using relays:", RELAYS);
-
-// --- helpers ---
-function parseFrontmatter(content) {
-    if (content.startsWith("---")) {
-        const parsed = matter(content);
-        return { ...parsed.data, body: parsed.content };
-    } else if (content.startsWith("+++")) {
-        const fm = content.substring(3, content.indexOf("+++", 3));
-        const body = content.substring(content.indexOf("+++", 3) + 3).trim();
-        const data = toml.parse(fm);
-        return { ...data, body };
-    } else {
-        return { title: "Untitled", body: content };
-    }
-}
 
 function getAllLocalNostrIds() {
     const files = glob.sync(`${POSTS_DIR}/*.md`);
@@ -43,29 +22,14 @@ function getAllLocalNostrIds() {
     for (const file of files) {
         const raw = fs.readFileSync(file, "utf-8");
         const meta = parseFrontmatter(raw);
+        delete meta.body;
+        delete meta.type;
+
         if (meta.nostr_id) {
             ids.set(meta.nostr_id, file);
         }
     }
     return ids;
-}
-
-function ISO2Date(isoString) {
-    const date = new Date(isoString);
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    const seconds = String(date.getSeconds()).padStart(2, "0");
-
-    const offset = -date.getTimezoneOffset(); // in minutes
-    const sign = offset >= 0 ? "+" : "-";
-    const offsetHours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0");
-    const offsetMinutes = String(Math.abs(offset) % 60).padStart(2, "0");
-
-    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
 }
 
 
@@ -106,7 +70,7 @@ function savePost(event) {
     console.log(`✅ Saved new post: ${file}`);
 }
 
-async function sync() {
+export async function sync() {
     console.log("🔄 Starting sync from Nostr…");
 
     const pool = new SimplePool();
@@ -145,5 +109,4 @@ async function sync() {
     console.log("✅ Sync finished");
 }
 
-sync();
 
