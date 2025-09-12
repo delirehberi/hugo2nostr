@@ -1,3 +1,5 @@
+![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)
+
 # Hugo to Nostr Publisher
 
 This project allows you to **publish your Hugo blog posts to the Nostr network** as `kind:30023` (Article) events, track already published posts, and manage deletions. It also includes debug tools to inspect events on relays.
