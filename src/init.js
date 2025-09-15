@@ -2,6 +2,7 @@ import { bytesToHex} from '@noble/hashes/utils' // already an installed dependen
 import {getPublicKey} from "nostr-tools/pure";
 import { useWebSocketImplementation } from 'nostr-tools/pool'
 import WebSocket from 'ws'
+import * as nip19 from 'nostr-tools/nip19';
 
 function init(){
     useWebSocketImplementation(WebSocket);

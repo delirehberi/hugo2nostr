@@ -3,8 +3,8 @@
 import { publish } from "./publish.js";
 import { delete_marked } from "./delete.js";
 import { update_nevents } from "./update.js";
-import { delete_all } from "./delete_all.js";
-import { to_hugo } from "./to_hugo.js";
+import { delete_all } from "./delete-all.js";
+import { sync } from "./to_hugo.js";
 import { debug } from "./debug.js";
 
 
@@ -42,7 +42,7 @@ function main() {
           delete_all();
           break;
     case "sync":
-          to_hugo();
+          sync();
           break;
     case "debug":
           debug();
