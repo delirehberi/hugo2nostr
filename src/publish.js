@@ -12,7 +12,7 @@ init();
 
 function updateFrontmatter(file, raw, meta, nostrId) {
     function updateData(data) {
-        data.nostr_id = nip19.neventEncode({ id: nostrId, relays: [RELAYS[0],RELAYS[1]], kind: 30023 });
+        data.nostr_id = nip19.neventEncode({ id: nostrId, relays: RELAYS, kind: 30023 });
         data.date = ISO2Date(meta.date || new Date().toISOString());
         return data;
     }
