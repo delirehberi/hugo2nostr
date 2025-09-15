@@ -117,7 +117,9 @@ export async function publish() {
             console.log("📝 Dry-run event:", JSON.stringify(signedEvent, null, 2));
         } else {
 
-            const alreadyPublished = meta.nostr_id && meta.nostr_id.length === 63 && meta.nostr_id.startsWith("nevent1"); 
+            const alreadyPublished = meta.nostr_id && meta.nostr_id.startsWith("nevent1"); 
+            console.dir(alreadyPublished)
+
             if (alreadyPublished) {
                 console.log(`⚠️ Skipping already published post: ${file}`);
                 continue; // skip this post
