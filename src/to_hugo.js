@@ -3,14 +3,14 @@ import matter from "gray-matter";
 import toml from "toml";
 import { glob } from "glob";
 import * as nostr from "nostr-tools";
-import { bytesToHex} from '@noble/hashes/utils' // already an installed dependency
+import { bytesToHex } from '@noble/hashes/utils' // already an installed dependency
 import * as nip19 from "nostr-tools/nip19";
 import { SimplePool } from "nostr-tools/pool";
 import { useWebSocketImplementation } from "nostr-tools/pool";
 import WebSocket from "ws";
-import {getPublicKey} from "nostr-tools/pure";
-import { parseFrontmatter, publishToNostr, ISO2Date, normalizeTags,normalizeDate,getSummary } from "./utils.js";
-import { RELAYS, POSTS_DIR, NOSTR_PRIVATE_KEY, AUTHOR_PRIVATE_KEY, DRY_RUN , pubkey,init} from "./init.js";
+import { getPublicKey } from "nostr-tools/pure";
+import { parseFrontmatter, publishToNostr, ISO2Date, normalizeTags, normalizeDate, getSummary } from "./utils.js";
+import { RELAYS, POSTS_DIR, NOSTR_PRIVATE_KEY, AUTHOR_PRIVATE_KEY, DRY_RUN, pubkey, init } from "./init.js";
 
 init();
 
@@ -52,6 +52,16 @@ function buildFrontmatter(event, nevent) {
     return matter.stringify(event.content, data);
 }
 
+function slugify(text) {
+    return text
+        .toString()
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w\-]+/g, '')
+        .replace(/\-\-+/g, '-');
+}
+
 function savePost(event) {
     const nevent = nip19.neventEncode({
         id: event.id,
@@ -61,8 +71,10 @@ function savePost(event) {
 
     const fm = buildFrontmatter(event, nevent);
 
+    const title = event.tags.find((t) => t[0] === "title")?.[1];
     const slug =
         event.tags.find((t) => t[0] === "d")?.[1] ||
+        (title && slugify(title)) ||
         `nostr-${event.id.slice(0, 8)}`;
 
     const file = `${POSTS_DIR}/${slug}.md`;
@@ -80,7 +92,7 @@ export async function sync() {
     console.log(`📚 Found ${localIds.size} local nostr_ids`);
 
     const since = Math.floor(Date.now() / 1000) - 5 * 365 * 24 * 60 * 60; // last 5 years
-    const events = await pool.querySync(RELAYS, { kinds: [30023] , authors: [pubkey], since})
+    const events = await pool.querySync(RELAYS, { kinds: [30023], authors: [pubkey], since })
 
     console.log(`🌐 Fetched ${events.length} events from relays`);
 
