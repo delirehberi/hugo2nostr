@@ -202,14 +202,18 @@ export async function initCommand() {
 
 export async function addSiteCommand(siteName) {
     if (!configExists()) {
-        console.error('❌ No config found. Run `hugo2nostr init` first.');
-        return 1;
+        console.log('No config found. Running init first...\n');
+        return initCommand();
     }
     
     const config = loadConfig();
     
     if (!siteName) {
         siteName = await prompt('Site name: ');
+        if (!siteName) {
+            console.log('Cancelled.');
+            return 0;
+        }
     }
     
     if (config.sites?.[siteName]) {

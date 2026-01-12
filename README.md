@@ -1,5 +1,7 @@
 # hugo2nostr
 
+[![Tests](https://github.com/delirehberi/hugo2nostr/actions/workflows/test.yml/badge.svg)](https://github.com/delirehberi/hugo2nostr/actions/workflows/test.yml)
+
 Publish Hugo blog posts to Nostr as `kind:30023` (long-form article) events.
 
 ## Features
@@ -77,7 +79,7 @@ DRY_RUN=1  # optional: preview without publishing
 ## Commands
 
 ```
-hugo2nostr <command> [options]
+node src/index.js <command> [options]
 
 Commands:
   publish              Publish posts to Nostr
@@ -100,17 +102,19 @@ Options:
   --delay=<ms>         Delay between publishes (default: 3000)
 ```
 
+You can also use npm scripts defined in package.json (e.g., `npm run publish`).
+
 ### Multi-site Usage
 
 ```bash
 # Publish default site
-hugo2nostr publish
+node src/index.js publish
 
 # Publish specific site
-hugo2nostr publish --site notes
+node src/index.js publish --site notes
 
 # Publish all sites
-hugo2nostr publish --all
+node src/index.js publish --all
 ```
 
 ## Frontmatter

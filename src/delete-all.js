@@ -15,9 +15,11 @@ export async function delete_all() {
         const raw = fs.readFileSync(file, "utf-8");
         const meta = parseFrontmatter(raw);
         if (meta.nostr_id && meta.nostr_id.startsWith("nevent1")) {
+            const filename = file.replace(/^.*[\\\/]/, '').replace(/\.md$/, '');
             posts.push({ 
                 id: meta.nostr_id, 
                 title: meta.title || "Untitled",
+                slug: meta.slug || filename,
                 file
             });
         }
@@ -52,7 +54,7 @@ export async function delete_all() {
             }
             
             log(`${progress} 🗑️  "${post.title}"`);
-            const relays = await deleteNote(data.id);
+            const relays = await deleteNote(data.id, post.slug);
             
             if (relays.length > 0) {
                 stats.deleted++;

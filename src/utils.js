@@ -207,12 +207,24 @@ export function stringifyFrontmatter(data, body, type) {
   }
 }
 
-export async function deleteNote(noteId) {
+export async function deleteNote(noteId, dTag = null, kind = 30023) {
+    const tags = [
+        ["e", noteId],
+        ["k", String(kind)],
+    ];
+    
+    // For replaceable events (like kind:30023 articles), also include 'a' tag
+    // Format: kind:pubkey:d-tag
+    if (dTag) {
+        const { pubkey } = await import('./init.js');
+        tags.push(["a", `${kind}:${pubkey}:${dTag}`]);
+    }
+    
     const deleteEvent = {
         kind: 5, // deletion event
         created_at: Math.floor(Date.now() / 1000),
-        tags: [["e", noteId]],
-        content: ""
+        tags,
+        content: "Deleted by the author",
     };
 
     const signedEvent = finalizeEvent(deleteEvent, AUTHOR_PRIVATE_KEY);
@@ -279,6 +291,36 @@ export function convertFootnotes(content) {
         }
         result = result.trim();
     }
+    
+    return result;
+}
+
+// Convert markdown punctuation to smart punctuation
+// --- → em-dash (—), -- → en-dash (–), ... → ellipsis (…)
+// Also converts straight quotes to curly quotes
+export function convertSmartPunctuation(content) {
+    if (!content) return content;
+    
+    let result = content;
+    
+    // Order matters: do --- before --
+    result = result.replace(/---/g, '\u2014');  // em-dash —
+    result = result.replace(/--/g, '\u2013');   // en-dash –
+    result = result.replace(/\.\.\./g, '\u2026'); // ellipsis …
+    
+    // Smart quotes - double quotes
+    // Opening quote: after whitespace/start or opening punctuation
+    result = result.replace(/(^|[\s(\[{])"(\S)/gm, '$1\u201C$2');  // "
+    // Closing quote: before whitespace/end or closing punctuation  
+    result = result.replace(/(\S)"([\s)\]},.:;!?\-]|$)/gm, '$1\u201D$2');  // "
+    
+    // Smart quotes - single quotes / apostrophes
+    // Apostrophe within words (don't, it's, etc.)
+    result = result.replace(/(\w)'(\w)/g, '$1\u2019$2');  // '
+    // Opening single quote: after whitespace/start
+    result = result.replace(/(^|[\s(\[{])'(\S)/gm, '$1\u2018$2');  // '
+    // Closing single quote: before whitespace/end
+    result = result.replace(/(\S)'([\s)\]},.:;!?\-]|$)/gm, '$1\u2019$2');  // '
     
     return result;
 }

@@ -102,7 +102,15 @@ export function getSiteConfig(siteName = null) {
     }
     
     // Determine which site to use
-    const targetSite = siteName || config.default_site;
+    let targetSite = siteName || config.default_site;
+    
+    // If no site specified and no default, use the only site if there's just one
+    if (!targetSite && config.sites) {
+        const siteNames = Object.keys(config.sites);
+        if (siteNames.length === 1) {
+            targetSite = siteNames[0];
+        }
+    }
     
     if (!targetSite || !config.sites?.[targetSite]) {
         const available = config.sites ? Object.keys(config.sites).join(', ') : 'none';
