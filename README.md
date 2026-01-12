@@ -1,165 +1,212 @@
-![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)
+# hugo2nostr
 
-# Hugo to Nostr Publisher
+Publish Hugo blog posts to Nostr as `kind:30023` (long-form article) events.
 
-This project allows you to **publish your Hugo blog posts to the Nostr network** as `kind:30023` (Article) events, track already published posts, and manage deletions. It also includes debug tools to inspect events on relays.
-
----
+[![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)](https://github.com/github/docs/actions/workflows/test.yml)
 
 ## Features
 
-- Publish Hugo posts from `content/posts/*.md` to Nostr.
-- Support multiple frontmatter formats:
-  - YAML (`---`)
-  - TOML (`+++`)
-- Normalize tags and dates automatically.
-- Dry-run mode to preview events before publishing.
-- Debug script to fetch existing articles from relays.
-- Delete script to send deletion events for all articles.
-- Supports multiple relays and continues if one relay fails.
-- Environment variable configuration for flexibility.
-- Store all published events in markdown files as metadata (nostr_id).
-- Fetch and sync posts from Nostr back to Hugo if not exists in hugo
-- Delete specific articles by adding `delete: true` in the post frontmatter
-- Update relay list and change nevent id from frontmatter. 
+- **Multi-site support** - manage multiple Hugo sites from one config
+- **Image uploads** - auto-upload images to nostr.build with NIP-98 auth
+- **Shortcode processing** - convert Hugo shortcodes to markdown/HTML
+- **Preview command** - preview articles as styled HTML before publishing
+- **Bidirectional sync** - publish to Nostr or sync from Nostr to Hugo
+- **Deletion management** - delete individual posts or all published articles
+- **Multiple relays** - publish to multiple relays with automatic retry
+- **Frontmatter formats** - supports YAML (`---`) and TOML (`+++`)
 
-
----
-
-## Environment Configuration
-
-You can configure your project using environment variables in a `.env` file or export them before running scripts.
-
-Example `.env` file:
+## Installation
 
 ```bash
-# Path to Hugo posts
-POSTS_DIR="FULLPATH_PROJECT_DIR/content/posts"
-
-# Comma-separated list of relays
-RELAY_LIST="wss://relay.emre.xyz"
-
-# Dry-run mode (1 = enable, 0 = disable)
-DRY_RUN=1
-
-# Your Nostr private key (nsec...)
-NOSTR_PRIVATE_KEY="nsecXXX"
+git clone https://github.com/delirehberi/hugo2nostr.git
+cd hugo2nostr
+npm install
 ```
 
-Load these variables automatically using [`dotenv`](https://www.npmjs.com/package/dotenv) or export them in your shell:
+## Quick Start
 
 ```bash
-export POSTS_DIR="/home/delirehberi/www/hugo-emrexyz/content/posts"
-export RELAY_LIST="wss://relay.emre.xyz"
-export DRY_RUN=1
-export NOSTR_PRIVATE_KEY="nsecXXX"
+# Set up configuration (interactive)
+node src/index.js init
+
+# Preview a post before publishing
+node src/index.js preview my-post.md
+
+# Publish posts (dry run first)
+DRY_RUN=1 node src/index.js publish -v
+
+# Publish for real
+node src/index.js publish
 ```
 
-Copy `.env.example` to `.env` and modify as needed.
+## Configuration
 
----
+hugo2nostr uses a YAML config file at `~/.config/hugo2nostr/config.yaml`:
 
-## Scripts
+```yaml
+default_site: essays
 
-### 1. `index.js` – Publish posts
+sites:
+  essays:
+    posts_dir: ~/blog/content/essays
+    blog_url: https://example.com
+  notes:
+    posts_dir: ~/notes/content/posts
+    blog_url: https://notes.example.com
 
-Publishes your Hugo posts to the Nostr network.
+relays:
+  - wss://relay.damus.io
+  - wss://nos.lol
 
-**Command:**
+image_host: nostr.build
+author_id: you@example.com
+```
+
+Your private key is stored separately in `~/.config/hugo2nostr/secrets` with 600 permissions.
+
+### Environment Variables
+
+For backwards compatibility or CI/CD, you can also use environment variables:
 
 ```bash
-npm run publish
+POSTS_DIR="/path/to/posts"
+RELAY_LIST="wss://relay1.example,wss://relay2.example"
+BLOG_URL="https://example.com"
+NOSTR_PRIVATE_KEY="nsec1..."
+DRY_RUN=1  # optional: preview without publishing
 ```
 
-**Features:**
+## Commands
 
-* Reads all Markdown files in `POSTS_DIR`.
-* Normalizes dates (default time `08:00` if missing).
-* Parses tags (comma or space separated, strips `#` if present).
-* Supports dry-run mode:
+```
+hugo2nostr <command> [options]
+
+Commands:
+  publish              Publish posts to Nostr
+  preview <file>       Preview a post as HTML (opens in browser)
+  delete               Delete posts marked with delete: true
+  delete-all           Delete all published posts
+  update               Update nevent IDs in frontmatter
+  sync                 Sync posts from Nostr to Hugo
+  debug                Fetch and display existing articles
+  init                 Set up configuration
+  config               Show current configuration
+  add-site [name]      Add a new site
+
+Options:
+  --site <name>        Select site to operate on
+  --all                Operate on all configured sites
+  -v, --verbose        Show detailed output
+  -q, --quiet          Only show errors and summary
+  -y, --yes            Skip confirmation prompts
+  --delay=<ms>         Delay between publishes (default: 3000)
+```
+
+### Multi-site Usage
 
 ```bash
-npm run dry-run
+# Publish default site
+hugo2nostr publish
+
+# Publish specific site
+hugo2nostr publish --site notes
+
+# Publish all sites
+hugo2nostr publish --all
 ```
 
+## Frontmatter
+
+hugo2nostr reads and writes frontmatter fields:
+
+```yaml
 ---
+title: My Article
+slug: my-article
+date: 2024-01-15
+tags: [bitcoin, nostr]
+topics: [technology]          # merged with tags
+description: Article summary
+hero_image: /images/hero.jpg  # uploaded to nostr.build
+nostr_id: nevent1...          # added after publishing
+nostr_image: https://...      # cached uploaded image URL
+delete: true                  # mark for deletion
+---
+```
 
-### 2. `debug.js` – Fetch existing articles
+### Supported Fields
 
-Fetches all existing `kind:30023` articles by your pubkey from configured relays. 
+| Field | Description |
+|-------|-------------|
+| `title` | Article title |
+| `slug` | URL slug (defaults to filename) |
+| `date` | Publication date |
+| `tags`, `topics` | Merged into `t` tags |
+| `description`, `summary` | Article summary |
+| `hero_image`, `image` | Hero image (auto-uploaded) |
+| `nostr_id` | nevent ID (set after publish) |
+| `nostr_image` | Cached nostr.build URL |
+| `delete` | Set to `true` to delete on next `delete` run |
 
-**Command:**
+## Image Handling
+
+Images are automatically uploaded to nostr.build using NIP-98 authentication:
+
+1. Local/relative images in `hero_image` are uploaded on first publish
+2. The nostr.build URL is cached in `nostr_image` frontmatter
+3. Subsequent publishes use the cached URL (no re-upload)
+
+## Shortcode Processing
+
+Hugo shortcodes are converted during publishing:
+
+- `{{< youtube id >}}` → YouTube embed link
+- `{{< figure src="..." >}}` → Markdown image
+- Custom shortcodes → interactive mapping (saved to `~/.config/hugo2nostr/shortcodes.json`)
+
+## Workflow
 
 ```bash
-npm run debug
+# 1. Preview before publishing
+hugo2nostr preview my-post.md
+
+# 2. Dry run to see what would happen
+DRY_RUN=1 hugo2nostr publish -v
+
+# 3. Publish
+hugo2nostr publish
+
+# 4. Check what's on relays
+hugo2nostr debug
+
+# 5. Delete a specific post (add delete: true to frontmatter first)
+hugo2nostr delete
+
+# 6. Sync posts from Nostr back to Hugo
+hugo2nostr sync
+
+# 7. Update nevent IDs after changing relays
+hugo2nostr update
 ```
 
-**Behavior:**
+## NIP Compliance
 
-* Connects to all relays in `RELAY_LIST`.
-* Continues fetching even if a relay fails.
+Published events follow [NIP-23](https://github.com/nostr-protocol/nips/blob/master/23.md):
 
----
-
-### 3. `delete.js` – Delete articles
-
-Sends a Nostr deletion event (`kind:5`) for all articles.
-
-**Command:**
-
-```bash
-npm run delete
-```
-
-**Behavior:**
-
-* Sends a deletion request per event to all configured relays.
-* Continues if a relay fails.
-* Requires your private key to sign the deletion events.
-
----
-
-## Example Workflow
-
-# 1. Preview posts without publishing
-`npm run dry-run`
-
-# 2. Publish posts to Nostr
-`npm run publish`
-
-# 3. Debug / fetch existing articles
-`npm run debug`
-
-# 4. Delete all articles if needed
-`npm run delete-all`
-
-# 5. Delete specific articles by adding `delete` metadata in the post frontmatter 
-`npm run delete`
-
-# 6. Sync posts from nostr network to hugo 
-`npm run sync`
-
-# 7. Update relay list and nevent id from frontmatter
-`npm run update`
-
----
-
-## Notes
-
-* Dry-run mode is recommended before publishing to avoid mistakes.
-* Posts with very old dates may be rejected by some relays; the script normalizes to a safe range.
-* Deletion events only work if your pubkey originally published the events.
-* Supports multiple relays and continues publishing even if one relay fails.
-
----
-
-## Dependencies
-
-* Node.js (ESM)
-* [nostr-tools](https://www.npmjs.com/package/nostr-tools)
-* glob
-* fs (built-in)
-* dotenv (optional, for `.env` support)
+- `kind: 30023` (long-form article)
+- `d` tag: slug/identifier
+- `title` tag: article title
+- `summary` tag: description
+- `published_at` tag: original publication timestamp
+- `t` tags: topics/hashtags
+- `image` tag: hero image URL
+- `r` tag: canonical URL
+- `author` tag: author identifier
 
 ## Contributing
-Feel free to open issues or submit pull requests for improvements or bug fixes.
+
+Issues and pull requests welcome.
+
+## License
+
+MIT
