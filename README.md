@@ -2,8 +2,6 @@
 
 Publish Hugo blog posts to Nostr as `kind:30023` (long-form article) events.
 
-[![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)](https://github.com/github/docs/actions/workflows/test.yml)
-
 ## Features
 
 - **Multi-site support** - manage multiple Hugo sites from one config
