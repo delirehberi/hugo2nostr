@@ -343,6 +343,49 @@ function createNip98Auth(url, method, privateKey) {
     return 'Nostr ' + btoa(JSON.stringify(signedEvent));
 }
 
+// Read Hugo config and extract params (supports toml, yaml, json)
+export function getHugoParams(hugoRoot) {
+    if (!hugoRoot) return {};
+    
+    const configFiles = ['hugo.toml', 'hugo.yaml', 'hugo.json', 'config.toml', 'config.yaml', 'config.json'];
+    
+    for (const configFile of configFiles) {
+        const configPath = path.join(hugoRoot, configFile);
+        if (!fs.existsSync(configPath)) continue;
+        
+        try {
+            const content = fs.readFileSync(configPath, 'utf-8');
+            
+            // For TOML, just extract [params] section with regex (avoids parser issues with dotted keys)
+            if (configFile.endsWith('.toml')) {
+                const params = {};
+                // Match [params] section until next section or EOF
+                const paramsMatch = content.match(/\[params\]([\s\S]*?)(?=\n\[|$)/);
+                if (paramsMatch) {
+                    const paramsSection = paramsMatch[1];
+                    // Extract simple key = "value" pairs
+                    const kvMatches = paramsSection.matchAll(/^\s*(\w+)\s*=\s*"([^"]+)"/gm);
+                    for (const match of kvMatches) {
+                        params[match[1]] = match[2];
+                    }
+                }
+                return params;
+            } else if (configFile.endsWith('.yaml')) {
+                // gray-matter can parse yaml
+                const config = matter(`---\n${content}\n---`).data;
+                return config.params || {};
+            } else {
+                const config = JSON.parse(content);
+                return config.params || {};
+            }
+        } catch (e) {
+            logVerbose(`  Could not parse ${configFile}: ${e.message}`);
+        }
+    }
+    
+    return {};
+}
+
 // Upload image to configured host (default: nostr.build)
 export async function uploadImage(filePath) {
     if (!fs.existsSync(filePath)) {

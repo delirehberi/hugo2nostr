@@ -19,6 +19,7 @@ import {
     resolveContentUrls,
     convertFootnotes,
     uploadImage,
+    getHugoParams,
 } from "./utils.js";
 import * as config from "./init.js";
 import { processShortcodes } from "./shortcodes.js";
@@ -35,6 +36,11 @@ export async function publish() {
     logVerbose(`Blog URL: ${BLOG_URL || 'not set'}`);
     
     const { RELAYS, options } = config;
+    
+    // Get Hugo params for og_image fallback
+    const hugoParams = getHugoParams(HUGO_ROOT);
+    const fallbackImage = hugoParams.og_image || hugoParams.ogImage || hugoParams.images?.[0] || null;
+    logVerbose(`Fallback image: ${fallbackImage || 'none'}`);
     
     const files = glob.sync(`${POSTS_DIR}/*.md`).filter(f => !f.endsWith('_index.md'));
     
@@ -71,11 +77,15 @@ export async function publish() {
         
         // Image handling: check for cached nostr_image, otherwise upload
         let imageUrl = meta.nostr_image || null;
-        const heroImage = meta.hero_image || meta.image || meta.featured_image;
+        const heroImage = meta.hero_image || meta.image || meta.featured_image || fallbackImage;
         
         if (!imageUrl && heroImage && HUGO_ROOT) {
-            // Find local image file
-            const imagePath = path.join(HUGO_ROOT, 'assets', heroImage);
+            // Find local image file - check both assets and static dirs
+            let imagePath = path.join(HUGO_ROOT, 'assets', heroImage);
+            if (!fs.existsSync(imagePath)) {
+                imagePath = path.join(HUGO_ROOT, 'static', heroImage);
+            }
+            
             if (fs.existsSync(imagePath)) {
                 if (DRY_RUN) {
                     logVerbose(`  Would upload: ${imagePath}`);
@@ -88,7 +98,12 @@ export async function publish() {
                     }
                 }
             } else {
-                logVerbose(`  Image not found: ${imagePath}`);
+                // If it's a URL already (starts with http), use it directly
+                if (heroImage.startsWith('http://') || heroImage.startsWith('https://')) {
+                    imageUrl = heroImage;
+                } else {
+                    logVerbose(`  Image not found: ${imagePath}`);
+                }
             }
         }
         
