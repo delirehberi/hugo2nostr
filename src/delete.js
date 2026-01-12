@@ -49,8 +49,10 @@ export async function delete_marked() {
                 continue;
             }
             
+            const filename = file.replace(/^.*[\\\/]/, '').replace(/\.md$/, '');
+            const slug = meta.slug || filename;
             log(`${progress} 🗑️  "${title}"`);
-            const relays = await deleteNote(data.id);
+            const relays = await deleteNote(data.id, slug);
             
             if (relays.length > 0) {
                 stats.deleted++;

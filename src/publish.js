@@ -18,8 +18,8 @@ import {
     resolveUrl,
     resolveContentUrls,
     convertFootnotes,
+    convertSmartPunctuation,
     uploadImage,
-    getHugoParams,
 } from "./utils.js";
 import * as config from "./init.js";
 import { processShortcodes } from "./shortcodes.js";
@@ -36,11 +36,6 @@ export async function publish() {
     logVerbose(`Blog URL: ${BLOG_URL || 'not set'}`);
     
     const { RELAYS, options } = config;
-    
-    // Get Hugo params for og_image fallback
-    const hugoParams = getHugoParams(HUGO_ROOT);
-    const fallbackImage = hugoParams.og_image || hugoParams.ogImage || hugoParams.images?.[0] || null;
-    logVerbose(`Fallback image: ${fallbackImage || 'none'}`);
     
     const files = glob.sync(`${POSTS_DIR}/*.md`).filter(f => !f.endsWith('_index.md'));
     
@@ -77,7 +72,7 @@ export async function publish() {
         
         // Image handling: check for cached nostr_image, otherwise upload
         let imageUrl = meta.nostr_image || null;
-        const heroImage = meta.hero_image || meta.image || meta.featured_image || fallbackImage;
+        const heroImage = meta.hero_image || meta.image || meta.featured_image;
         
         if (!imageUrl && heroImage && HUGO_ROOT) {
             // Find local image file - check both assets and static dirs
@@ -137,6 +132,9 @@ export async function publish() {
         
         // 4. Convert footnotes to superscript format
         content = convertFootnotes(content);
+        
+        // 5. Convert smart punctuation (dashes, quotes, ellipsis)
+        content = convertSmartPunctuation(content);
         
         // Get auto-summary from processed content if not set
         const finalSummary = summary || getSummary(content);
