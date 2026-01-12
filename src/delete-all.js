@@ -1,91 +1,80 @@
 import fs from "fs";
-import matter from "gray-matter";
-import toml from "toml";
-import {glob} from "glob";
-import * as nip19 from 'nostr-tools/nip19'
-import {deleteNote, parseFrontmatter} from "./utils.js";
-import { POSTS_DIR, init} from "./init.js";
+import { glob } from "glob";
+import * as nip19 from 'nostr-tools/nip19';
+import { deleteNote, parseFrontmatter, updateFrontmatter, sleep, confirm, log, logVerbose, logError } from "./utils.js";
+import * as config from "./init.js";
 
-init();
-
-function published_posts() {
-    let published = { posts: [] };
-    const files = glob.sync(`${POSTS_DIR}/*.md`);
+export async function delete_all() {
+    config.init();
+    const { POSTS_DIR, options } = config;
+    
+    const files = glob.sync(`${POSTS_DIR}/*.md`).filter(f => !f.endsWith('_index.md'));
+    const posts = [];
+    
     for (const file of files) {
         const raw = fs.readFileSync(file, "utf-8");
         const meta = parseFrontmatter(raw);
-        const alreadyPublished = meta.nostr_id && meta.nostr_id.length === 63 && meta.nostr_id.startsWith("nevent1"); 
-        if(alreadyPublished){
-            published.posts.push({ 
+        if (meta.nostr_id && meta.nostr_id.startsWith("nevent1")) {
+            posts.push({ 
                 id: meta.nostr_id, 
-                title: meta.title || "Untitled" ,
-                file: file
+                title: meta.title || "Untitled",
+                file
             });
         }
     }
-    return published;
-}
-
-function updateFrontmatter(file) {
-    let raw = fs.readFileSync(file, "utf-8");
-
-    function updateData(data) {
-        data.nostr_id = "";
-        return data;
+    
+    if (posts.length === 0) {
+        log("📚 No published posts found");
+        return 0;
     }
-    if (raw.startsWith("---")) {
-        // YAML frontmatter
-        const parsed = matter(raw);
-        parsed.data=updateData(parsed.data);
-        const updated = matter.stringify(parsed.content, parsed.data);
-        fs.writeFileSync(file, updated, "utf-8");
-
-    } else if (raw.startsWith("+++")) {
-        // TOML frontmatter
-        const fm = raw.substring(3, raw.indexOf("+++", 3));
-        const body = raw.substring(raw.indexOf("+++", 3) + 3).trim();
-
-        let data = toml.parse(fm);
-        data = updateData(data);
-
-        // Reconstruct TOML + body
-        let newFm = Object.entries(data)
-            .map(([k, v]) => {
-                if (Array.isArray(v)) return `${k} = [${v.map(x => `"${x}"`).join(", ")}]`;
-                if (typeof v === "string") return `${k} = "${v}"`;
-                return `${k} = ${v}`;
-            })
-            .join("\n");
-
-        const updated = `+++\n${newFm}\n+++\n\n${body}\n`;
-        fs.writeFileSync(file, updated, "utf-8");
-    } else {
-        console.warn(`⚠️ Could not update frontmatter for ${file}, unknown format`);
+    
+    log(`📚 Found ${posts.length} published posts`);
+    
+    // Confirmation (this is destructive!)
+    const confirmed = await confirm(`⚠️  Delete ALL ${posts.length} posts from Nostr? This cannot be undone.`);
+    if (!confirmed) {
+        log("❌ Cancelled");
+        return 0;
     }
-}
-// run script
-export async function delete_all(){
-    let published = published_posts();
-
-    for (const post of published.posts) {
-        try{
-            console.log(post.id, post.title); 
-
-            let {eventType, data}= nip19.decode(post.id);
-            if(eventType !== "nevent"){
-                console.error("Invalid note id", post.id);
+    
+    const stats = { deleted: 0, failed: 0 };
+    
+    for (let i = 0; i < posts.length; i++) {
+        const post = posts[i];
+        const progress = `[${i + 1}/${posts.length}]`;
+        
+        try {
+            const { type, data } = nip19.decode(post.id);
+            if (type !== "nevent") {
+                logError(`${progress} ❌ Invalid nostr_id for "${post.title}"`);
+                stats.failed++;
                 continue;
             }
-
-            await deleteNote(data.id);
-            //update frontMatter 
-            updateFrontmatter(post.file);
-            await sleep(5000);
-        }catch(e){
-            console.error("Error deleting post", post.id, e);
-            continue;
+            
+            log(`${progress} 🗑️  "${post.title}"`);
+            const relays = await deleteNote(data.id);
+            
+            if (relays.length > 0) {
+                stats.deleted++;
+                updateFrontmatter(post.file, { nostr_id: "" });
+            } else {
+                stats.failed++;
+            }
+            
+            if (i < posts.length - 1 && options.delay > 0) {
+                await sleep(options.delay);
+            }
+        } catch (e) {
+            stats.failed++;
+            logError(`${progress} ❌ Failed: ${e.message}`);
         }
     }
-
-    console.log("All done!");
+    
+    await config.closePool();
+    
+    console.log(`\n🎉 Done: ${stats.deleted} deleted, ${stats.failed} failed`);
+    
+    if (stats.failed > 0 && stats.deleted === 0) return 2;
+    if (stats.failed > 0) return 1;
+    return 0;
 }

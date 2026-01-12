@@ -21,6 +21,7 @@
   "scripts": {
     "publish": "node src/index.js publish",
     "dry-run": "DRY_RUN=1 node src/index.js publish",
+    "preview": "node src/index.js preview",
     "debug": "node src/index.js debug",
     "delete": "node src/index.js delete",
     "delete-all": "node src/index.js delete-all",
@@ -30,11 +31,13 @@
   },
   "dependencies": {
     "crypto": "*",
+    "dotenv": "^17.2.3",
     "glob": "^11.0.0",
     "gray-matter": "^4.0.3",
     "nostr-tools": "^2.7.0",
     "toml": "^3.0.0",
-    "ws": "*"
+    "ws": "*",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@babel/core": "^7.28.4",
