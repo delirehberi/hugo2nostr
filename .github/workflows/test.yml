@@ -43,4 +43,3 @@ jobs:
       # Run Jest tests
       - name: Run tests
         run: npm test -- --ci --runInBand
-

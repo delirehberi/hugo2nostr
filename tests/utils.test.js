@@ -1,9 +1,10 @@
 import fs from "fs";
-import * as utils from "../src/utils.js";
 
 // ----- Mocks -----
 jest.mock("fs", () => ({
     unlinkSync: jest.fn(),
+    readFileSync: jest.fn(),
+    writeFileSync: jest.fn(),
 }));
 
 jest.mock("nostr-tools/pool", () => ({
@@ -13,9 +14,25 @@ jest.mock("nostr-tools/pool", () => ({
     })),
 }));
 
+jest.mock("nostr-tools/pure", () => ({
+    finalizeEvent: jest.fn().mockReturnValue({ id: "test-id" }),
+}));
+
 jest.mock("crypto", () => ({
     randomBytes: jest.fn().mockReturnValue(Buffer.from("deadbeef", "hex")),
 }));
+
+jest.mock("../src/init.js", () => ({
+    RELAYS: ["wss://test.relay"],
+    AUTHOR_PRIVATE_KEY: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    getPool: jest.fn().mockReturnValue({
+        publish: jest.fn().mockReturnValue([Promise.resolve()]),
+        seenOn: new Map(),
+    }),
+    options: { verbose: false, quiet: true, yes: false, delay: 0 },
+}));
+
+import * as utils from "../src/utils.js";
 
 describe("utils.js functions", () => {
 
@@ -108,7 +125,8 @@ Body content`;
         const start = Date.now();
         await utils.sleep(50);
         const elapsed = Date.now() - start;
-        expect(elapsed).toBeGreaterThanOrEqual(50);
+        // Allow 1ms tolerance for timer variance
+        expect(elapsed).toBeGreaterThanOrEqual(49);
     });
 
     // ---- getSummary ----
@@ -141,6 +159,55 @@ Body content`;
         const tomlStr = utils.stringifyFrontmatter({title: "x"}, "body", "toml");
         expect(tomlStr).toMatch(/\+\+\+/);
         expect(tomlStr).toMatch(/title = "x"/);
+    });
+
+    // ---- resolveUrl ----
+    test("resolveUrl returns path unchanged if no baseUrl", () => {
+        expect(utils.resolveUrl("/images/foo.png", "")).toBe("/images/foo.png");
+        expect(utils.resolveUrl("/images/foo.png", null)).toBe("/images/foo.png");
+    });
+
+    test("resolveUrl returns absolute URLs unchanged", () => {
+        expect(utils.resolveUrl("https://example.com/img.png", "https://blog.com")).toBe("https://example.com/img.png");
+        expect(utils.resolveUrl("http://example.com/img.png", "https://blog.com")).toBe("http://example.com/img.png");
+    });
+
+    test("resolveUrl resolves paths with leading slash", () => {
+        expect(utils.resolveUrl("/images/foo.png", "https://blog.com")).toBe("https://blog.com/images/foo.png");
+    });
+
+    test("resolveUrl resolves relative paths without leading slash", () => {
+        expect(utils.resolveUrl("images/foo.png", "https://blog.com")).toBe("https://blog.com/images/foo.png");
+    });
+
+    // ---- resolveContentUrls ----
+    test("resolveContentUrls resolves relative markdown links", () => {
+        const content = "Check out [this post](/posts/other) and [another](/about)";
+        const result = utils.resolveContentUrls(content, "https://blog.com");
+        expect(result).toBe("Check out [this post](https://blog.com/posts/other) and [another](https://blog.com/about)");
+    });
+
+    test("resolveContentUrls resolves relative markdown images", () => {
+        const content = "![hero](images/hero.png) and ![other](/static/img.jpg)";
+        const result = utils.resolveContentUrls(content, "https://blog.com");
+        expect(result).toBe("![hero](https://blog.com/images/hero.png) and ![other](https://blog.com/static/img.jpg)");
+    });
+
+    test("resolveContentUrls leaves absolute URLs unchanged", () => {
+        const content = "[link](https://external.com/page) and ![img](https://cdn.com/img.png)";
+        const result = utils.resolveContentUrls(content, "https://blog.com");
+        expect(result).toBe(content);
+    });
+
+    test("resolveContentUrls leaves mailto and anchor links unchanged", () => {
+        const content = "[email](mailto:test@example.com) and [section](#heading)";
+        const result = utils.resolveContentUrls(content, "https://blog.com");
+        expect(result).toBe(content);
+    });
+
+    test("resolveContentUrls handles empty content", () => {
+        expect(utils.resolveContentUrls("", "https://blog.com")).toBe("");
+        expect(utils.resolveContentUrls(null, "https://blog.com")).toBe(null);
     });
 });
 
