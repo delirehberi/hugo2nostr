@@ -3,17 +3,17 @@ import path from "path";
 import { glob } from "glob";
 import { finalizeEvent } from "nostr-tools/pure";
 import * as nip19 from 'nostr-tools/nip19';
-import { 
-    publishToNostr, 
-    ISO2Date, 
-    normalizeTags, 
-    normalizeDate, 
-    getSummary, 
-    parseFrontmatter, 
-    updateFrontmatter, 
-    sleep, 
-    log, 
-    logVerbose, 
+import {
+    publishToNostr,
+    ISO2Date,
+    normalizeTags,
+    normalizeDate,
+    getSummary,
+    parseFrontmatter,
+    updateFrontmatter,
+    sleep,
+    log,
+    logVerbose,
     logError,
     resolveUrl,
     resolveContentUrls,
@@ -26,22 +26,22 @@ import { processShortcodes } from "./shortcodes.js";
 
 export async function publish() {
     // Initialize for selected site
-    config.init();
-    
+    await config.init();
+
     const { POSTS_DIR, HUGO_ROOT, BLOG_URL, AUTHOR_ID, AUTHOR_PRIVATE_KEY, DRY_RUN, IMAGE_HOST, SITE_NAME } = config;
-    
+
     logVerbose(`Site: ${SITE_NAME || 'default'}`);
     logVerbose(`Searching files in ${POSTS_DIR}`);
     logVerbose(`Hugo root: ${HUGO_ROOT || 'not found'}`);
     logVerbose(`Blog URL: ${BLOG_URL || 'not set'}`);
-    
+
     const { RELAYS, options } = config;
-    
+
     const files = glob.sync(`${POSTS_DIR}/*.md`).filter(f => !f.endsWith('_index.md'));
-    
+
     // Stats tracking
     const stats = { total: files.length, published: 0, skipped: 0, drafts: 0, failed: 0 };
-    
+
     log(`📚 Found ${files.length} posts`);
 
     for (let i = 0; i < files.length; i++) {
@@ -69,18 +69,18 @@ export async function publish() {
         // Extract metadata with expanded frontmatter support
         const filename = file.replace(/^.*[\\\/]/, '').replace(/\.md$/, '');
         const slug = meta.slug || filename;
-        
+
         // Image handling: check for cached nostr_image, otherwise upload
         let imageUrl = meta.nostr_image || null;
         const heroImage = meta.hero_image || meta.image || meta.featured_image;
-        
+
         if (!imageUrl && heroImage && HUGO_ROOT) {
             // Find local image file - check both assets and static dirs
             let imagePath = path.join(HUGO_ROOT, 'assets', heroImage);
             if (!fs.existsSync(imagePath)) {
                 imagePath = path.join(HUGO_ROOT, 'static', heroImage);
             }
-            
+
             if (fs.existsSync(imagePath)) {
                 if (DRY_RUN) {
                     logVerbose(`  Would upload: ${imagePath}`);
@@ -101,22 +101,22 @@ export async function publish() {
                 }
             }
         }
-        
+
         // Merge tags and topics, dedupe
         const allTags = [
             ...normalizeTags(meta.tags),
             ...normalizeTags(meta.topics),
         ].filter((v, i, a) => a.indexOf(v) === i);
-        
+
         // Summary preference: summary > description > auto-generated
         const summary = meta.summary || meta.description || "";
 
         // Process content
         let content = meta.body || "";
-        
+
         // 1. Strip Hugo markers
         content = content.replace(/<!--more-->/g, "").trim();
-        
+
         // 2. Process shortcodes
         log(`${progress} Processing "${title}"...`);
         const shortcodeResult = await processShortcodes(content, HUGO_ROOT, BLOG_URL);
@@ -126,16 +126,16 @@ export async function publish() {
             continue;
         }
         content = shortcodeResult.content;
-        
+
         // 3. Resolve relative URLs
         content = resolveContentUrls(content, BLOG_URL);
-        
+
         // 4. Convert footnotes to superscript format
         content = convertFootnotes(content);
-        
+
         // 5. Convert smart punctuation (dashes, quotes, ellipsis)
         content = convertSmartPunctuation(content);
-        
+
         // Get auto-summary from processed content if not set
         const finalSummary = summary || getSummary(content);
 
@@ -151,30 +151,30 @@ export async function publish() {
             ["d", slug],
             ["title", title],
         ];
-        
+
         if (AUTHOR_ID) {
             tagsArray.push(["author", AUTHOR_ID]);
         }
-        
+
         if (canonicalUrl) {
             tagsArray.push(["r", canonicalUrl]);
         }
-        
+
         if (imageUrl) {
             tagsArray.push(["image", imageUrl]);
         }
-        
+
         if (finalSummary) {
             tagsArray.push(["summary", finalSummary]);
         }
-        
+
         tagsArray.push(["published_at", String(publishedAt)]);
-        
+
         // Add updated_at only for re-publishing
         if (alreadyPublished) {
             tagsArray.push(["updated_at", String(now)]);
         }
-        
+
         // Add all topic/tag entries
         for (const tag of allTags) {
             tagsArray.push(["t", tag]);
@@ -204,7 +204,7 @@ export async function publish() {
                 } else {
                     stats.failed++;
                 }
-                
+
                 // Delay between publishes (skip on last item)
                 if (i < files.length - 1 && options.delay > 0) {
                     await sleep(options.delay);

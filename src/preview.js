@@ -19,59 +19,59 @@ import { processShortcodes } from "./shortcodes.js";
 // Convert markdown to HTML (basic implementation)
 function markdownToHtml(content) {
     let html = content;
-    
+
     // Escape HTML
     html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    
+
     // Headers
     html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
     html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-    
+
     // Bold and italic
     html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
     html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
     html = html.replace(/_(.+?)_/g, '<em>$1</em>');
-    
+
     // Links
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-    
+
     // Images
     html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<figure><img src="$2" alt="$1"><figcaption>$1</figcaption></figure>');
-    
+
     // Blockquotes
     html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
     // Merge consecutive blockquotes
     html = html.replace(/<\/blockquote>\n<blockquote>/g, '\n');
-    
+
     // Horizontal rules
     html = html.replace(/^---+$/gm, '<hr>');
-    
+
     // Code blocks
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>');
-    
+
     // Inline code
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-    
+
     // Lists
     html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
     html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-    
+
     // Paragraphs - wrap text blocks
     const lines = html.split('\n\n');
     html = lines.map(block => {
         block = block.trim();
         if (!block) return '';
-        if (block.startsWith('<h') || block.startsWith('<ul') || 
+        if (block.startsWith('<h') || block.startsWith('<ul') ||
             block.startsWith('<blockquote') || block.startsWith('<pre') ||
             block.startsWith('<hr') || block.startsWith('<figure')) {
             return block;
         }
         return `<p>${block.replace(/\n/g, '<br>')}</p>`;
     }).join('\n\n');
-    
+
     return html;
 }
 
@@ -79,7 +79,7 @@ function markdownToHtml(content) {
 function generateHtml(event, meta, previewImageUrl) {
     const tags = Object.fromEntries(event.tags.filter(t => t.length >= 2).map(t => [t[0], t[1]]));
     const allTags = event.tags.filter(t => t[0] === 't').map(t => t[1]);
-    
+
     const title = tags.title || meta.title || 'Untitled';
     const image = previewImageUrl || tags.image || '';  // Prefer local preview URL
     const imageInEvent = tags.image || '';  // What's actually in the event
@@ -91,9 +91,9 @@ function generateHtml(event, meta, previewImageUrl) {
     const author = tags.author || AUTHOR_ID || '';
     const npub = nip19.npubEncode(event.pubkey);
     const nevent = nip19.neventEncode({ id: event.id, kind: 30023 });
-    
+
     const contentHtml = markdownToHtml(event.content);
-    
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -398,15 +398,15 @@ function generateHtml(event, meta, previewImageUrl) {
 }
 
 export async function preview(targetFile) {
-    config.init();
+    await config.init();
     const { POSTS_DIR, BLOG_URL, AUTHOR_ID, AUTHOR_PRIVATE_KEY, HUGO_ROOT } = config;
-    
+
     if (!targetFile) {
         logError("Usage: hugo2nostr preview <file.md>");
         logError("  Provide a path to a Hugo post to preview");
         return 1;
     }
-    
+
     // Resolve file path
     let filePath = targetFile;
     if (!path.isAbsolute(filePath)) {
@@ -428,23 +428,23 @@ export async function preview(targetFile) {
             }
         }
     }
-    
+
     if (!fs.existsSync(filePath)) {
         logError(`File not found: ${filePath}`);
         return 1;
     }
-    
+
     log(`Generating preview for: ${filePath}`);
-    
+
     const raw = fs.readFileSync(filePath, "utf-8");
     const meta = parseFrontmatter(raw);
     const title = meta.title || "Untitled";
-    
+
     // Extract metadata
     const filename = path.basename(filePath, '.md');
     const slug = meta.slug || filename;
     const heroImage = meta.hero_image || meta.image || meta.featured_image;
-    
+
     // Resolve image URL - for preview, always try local files first
     let imageUrl = null;
     let imageUrlForEvent = null;  // The URL that will go in the actual event
@@ -473,19 +473,19 @@ export async function preview(targetFile) {
             }
         }
     }
-    
+
     // Merge tags and topics
     const allTags = [
         ...normalizeTags(meta.tags),
         ...normalizeTags(meta.topics),
     ].filter((v, i, a) => a.indexOf(v) === i);
-    
+
     const summary = meta.summary || meta.description || "";
-    
+
     // Process content
     let content = meta.body || "";
     content = content.replace(/<!--more-->/g, "").trim();
-    
+
     // Process shortcodes
     const shortcodeResult = await processShortcodes(content, HUGO_ROOT, BLOG_URL);
     if (!shortcodeResult.ok) {
@@ -493,16 +493,16 @@ export async function preview(targetFile) {
         return 1;
     }
     content = shortcodeResult.content;
-    
+
     // Resolve URLs
     content = resolveContentUrls(content, BLOG_URL);
-    
+
     const finalSummary = summary || getSummary(content);
-    
+
     // Timestamps
     const now = Math.floor(Date.now() / 1000);
     const publishedAt = Math.floor(new Date(normalizeDate(meta.date)).getTime() / 1000);
-    
+
     // Build canonical URL
     const canonicalUrl = BLOG_URL ? `${BLOG_URL.replace(/\/$/, '')}/${slug}/` : null;
 
@@ -511,29 +511,29 @@ export async function preview(targetFile) {
         ["d", slug],
         ["title", title],
     ];
-    
+
     if (AUTHOR_ID) {
         tagsArray.push(["author", AUTHOR_ID]);
     }
-    
+
     if (canonicalUrl) {
         tagsArray.push(["r", canonicalUrl]);
     }
-    
+
     if (imageUrlForEvent || imageUrl) {
         tagsArray.push(["image", imageUrlForEvent || imageUrl]);
     }
-    
+
     if (finalSummary) {
         tagsArray.push(["summary", finalSummary]);
     }
-    
+
     tagsArray.push(["published_at", String(publishedAt)]);
-    
+
     for (const tag of allTags) {
         tagsArray.push(["t", tag]);
     }
-    
+
     const nostrEvent = {
         kind: 30023,
         created_at: now,
@@ -541,16 +541,16 @@ export async function preview(targetFile) {
         content,
     };
     const signedEvent = finalizeEvent(nostrEvent, AUTHOR_PRIVATE_KEY);
-    
+
     // Generate HTML (pass local image URL for preview display)
     const html = generateHtml(signedEvent, meta, imageUrl);
-    
+
     // Write to temp file
     const previewPath = path.join('/tmp', `nostr-preview-${slug}.html`);
     fs.writeFileSync(previewPath, html);
-    
+
     log(`Preview saved to: ${previewPath}`);
-    
+
     // Open in browser
     try {
         const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
@@ -559,6 +559,6 @@ export async function preview(targetFile) {
     } catch {
         log(`Open manually: file://${previewPath}`);
     }
-    
+
     return 0;
 }

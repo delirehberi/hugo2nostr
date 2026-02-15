@@ -13,10 +13,10 @@ function buildFrontmatter(event, nevent) {
     const publishedAt = tags.find((t) => t[0] === "published_at")?.[1];
     const slug = tags.find((t) => t[0] === "d")?.[1];
     const tagValues = tags.filter((t) => t[0] === "t").map((t) => t[1]);
-    
+
     // Use published_at if available, otherwise fall back to created_at
-    const timestamp = publishedAt 
-        ? parseInt(publishedAt, 10) * 1000 
+    const timestamp = publishedAt
+        ? parseInt(publishedAt, 10) * 1000
         : event.created_at * 1000;
     const hugoDate = ISO2Date(new Date(timestamp).toISOString());
 
@@ -44,11 +44,11 @@ function slugify(text) {
 }
 
 export async function sync() {
-    config.init();
+    await config.init();
     const { RELAYS, POSTS_DIR, pubkey } = config;
-    
+
     log("🔄 Syncing from Nostr...");
-    
+
     // Get all local nostr IDs
     const files = glob.sync(`${POSTS_DIR}/*.md`).filter(f => !f.endsWith('_index.md'));
     const localIds = new Map();
@@ -59,30 +59,37 @@ export async function sync() {
             localIds.set(meta.nostr_id, file);
         }
     }
-    
+
     const pool = config.getPool();
     logVerbose(`📚 Found ${localIds.size} local posts`);
 
     const since = Math.floor(Date.now() / 1000) - 5 * 365 * 24 * 60 * 60;
-    
+
     let events;
     try {
-        events = await pool.querySync(RELAYS, { kinds: [30023], authors: [pubkey], since });
+        events = await pool.querySync([RELAYS[0]], { kinds: [30023], authors: [pubkey], since }, {
+            onevent: (event) => {
+                const title = event.tags.find((t) => t[0] === "title")?.[1] || "Untitled";
+                logVerbose(`📥 Received event: "${title}" (${event.id.slice(0, 8)})`);
+            },
+        });
+        events.sort((a, b) => b.created_at - a.created_at)
+        console.dir(events);
     } catch (err) {
         logError(`❌ Failed to fetch from relays: ${err.message}`);
         await config.closePool();
         return 2;
     }
-    
+
     log(`🌐 Found ${events.length} events on relays`);
-    
+
     const stats = { synced: 0, skipped: 0 };
-    
+
     for (let i = 0; i < events.length; i++) {
         const ev = events[i];
         const title = ev.tags.find((t) => t[0] === "title")?.[1] || "Untitled";
         const progress = `[${i + 1}/${events.length}]`;
-        
+
         const nevent = nip19.neventEncode({
             id: ev.id,
             relays: RELAYS,
@@ -103,13 +110,13 @@ export async function sync() {
 
         const file = `${POSTS_DIR}/${slug}.md`;
         fs.writeFileSync(file, fm, "utf-8");
-        
+
         stats.synced++;
         log(`${progress} ✅ "${title}"`);
     }
 
     await config.closePool();
-    
+
     console.log(`\n🎉 Done: ${stats.synced} synced, ${stats.skipped} already existed`);
     return 0;
 }
