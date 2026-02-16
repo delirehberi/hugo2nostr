@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Transfer all hugo blog posts to nostr network",
   "type": "module",
-  "main": "index.js",
+  "main": "dist/index.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/delirehberi/nostr2relay.git"
@@ -19,30 +19,44 @@
   },
   "homepage": "https://github.com/delirehberi/nostr2relay#readme",
   "scripts": {
-    "publish": "node src/index.js publish",
-    "dry-run": "DRY_RUN=1 node src/index.js publish",
-    "preview": "node src/index.js preview",
-    "debug": "node src/index.js debug",
-    "delete": "node src/index.js delete",
-    "delete-all": "node src/index.js delete-all",
-    "sync": "node src/index.js sync",
-    "update": "node src/index.js update",
-    "test": "jest"
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node --esm src/index.ts",
+    "publish": "node dist/index.js publish",
+    "dry-run": "DRY_RUN=1 node dist/index.js publish",
+    "preview": "node dist/index.js preview",
+    "debug": "node dist/index.js debug",
+    "delete": "node dist/index.js delete",
+    "delete-all": "node dist/index.js delete-all",
+    "sync": "node dist/index.js sync",
+    "init": "node dist/index.js init",
+    "config": "node dist/index.js config",
+    "add-site": "node dist/index.js add-site",
+    "update": "echo 'Update command is deprecated defined in dry-run or publish logic'",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
   },
   "dependencies": {
     "crypto": "*",
-    "dotenv": "^17.2.3",
-    "glob": "^11.0.0",
+    "dotenv": "^16.3.1",
+    "glob": "^10.3.10",
     "gray-matter": "^4.0.3",
     "nostr-tools": "^2.7.0",
     "toml": "^3.0.0",
-    "ws": "*",
-    "yaml": "^2.8.2"
+    "ws": "^8.16.0",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
-    "@babel/core": "^7.28.4",
-    "@babel/preset-env": "^7.28.3",
-    "babel-jest": "^30.1.2",
-    "jest": "^30.1.3"
+    "@babel/core": "^7.23.6",
+    "@babel/preset-env": "^7.23.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.10.4",
+    "@types/ws": "^8.5.10",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
   }
 }
