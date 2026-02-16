@@ -21,22 +21,23 @@ Publish Hugo blog posts to Nostr as `kind:30023` (long-form article) events.
 git clone https://github.com/delirehberi/hugo2nostr.git
 cd hugo2nostr
 npm install
+npm run build  # Compile TypeScript to JavaScript
 ```
 
 ## Quick Start
 
 ```bash
 # Set up configuration (interactive)
-node src/index.js init
+npm run init
 
 # Preview a post before publishing
-node src/index.js preview my-post.md
+npm run preview my-post.md
 
 # Publish posts (dry run first)
-DRY_RUN=1 node src/index.js publish -v
+npm run dry-run -- -v
 
 # Publish for real
-node src/index.js publish
+npm run publish
 ```
 
 ## Configuration
@@ -78,43 +79,51 @@ DRY_RUN=1  # optional: preview without publishing
 
 ## Commands
 
-```
-node src/index.js <command> [options]
+```bash
+# Using npm scripts (recommended)
+npm run <command>
 
-Commands:
-  publish              Publish posts to Nostr
-  preview <file>       Preview a post as HTML (opens in browser)
-  delete               Delete posts marked with delete: true
-  delete-all           Delete all published posts
-  update               Update nevent IDs in frontmatter
-  sync                 Sync posts from Nostr to Hugo
-  debug                Fetch and display existing articles
-  init                 Set up configuration
-  config               Show current configuration
-  add-site [name]      Add a new site
-
-Options:
-  --site <name>        Select site to operate on
-  --all                Operate on all configured sites
-  -v, --verbose        Show detailed output
-  -q, --quiet          Only show errors and summary
-  -y, --yes            Skip confirmation prompts
-  --delay=<ms>         Delay between publishes (default: 3000)
+# Or use the compiled distribution directly
+node dist/index.js <command> [options]
 ```
 
-You can also use npm scripts defined in package.json (e.g., `npm run publish`).
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run publish` | Publish posts to Nostr |
+| `npm run preview` | Preview a post as HTML (opens in browser) |
+| `npm run delete` | Delete posts marked with delete: true |
+| `npm run delete-all` | Delete all published posts |
+| `npm run sync` | Sync posts from Nostr to Hugo |
+| `npm run debug` | Fetch and display existing articles |
+| `npm run init` | Set up configuration |
+| `npm run config` | Show current configuration |
+| `npm run add-site` | Add a new site |
+| `npm run dry-run` | Publish with dry-run mode (no actual publishing) |
+
+### Options
+
+```
+--site <name>        Select site to operate on
+--all                Operate on all configured sites
+-v, --verbose        Show detailed output
+-q, --quiet          Only show errors and summary
+-y, --yes            Skip confirmation prompts
+--delay=<ms>         Delay between publishes (default: 3000)
+```
 
 ### Multi-site Usage
 
 ```bash
 # Publish default site
-node src/index.js publish
+npm run publish
 
 # Publish specific site
-node src/index.js publish --site notes
+npm run publish -- --site notes
 
 # Publish all sites
-node src/index.js publish --all
+npm run publish -- --all
 ```
 
 ## Frontmatter
@@ -170,25 +179,73 @@ Hugo shortcodes are converted during publishing:
 
 ```bash
 # 1. Preview before publishing
-hugo2nostr preview my-post.md
+npm run preview my-post.md
 
 # 2. Dry run to see what would happen
-DRY_RUN=1 hugo2nostr publish -v
+npm run dry-run -- -v
 
 # 3. Publish
-hugo2nostr publish
+npm run publish
 
 # 4. Check what's on relays
-hugo2nostr debug
+npm run debug
 
 # 5. Delete a specific post (add delete: true to frontmatter first)
-hugo2nostr delete
+npm run delete
 
 # 6. Sync posts from Nostr back to Hugo
-hugo2nostr sync
+npm run sync
+```
 
-# 7. Update nevent IDs after changing relays
-hugo2nostr update
+## Development
+
+This project is written in TypeScript and requires compilation before use.
+
+### Building
+
+```bash
+npm run build  # Compile TypeScript to dist/
+```
+
+### Development Mode
+
+```bash
+npm run dev  # Run directly with ts-node (no build required)
+```
+
+### Testing
+
+The project includes a comprehensive test suite:
+
+```bash
+npm test              # Run all tests
+npm run test:watch    # Run tests in watch mode
+npm run test:coverage # Run tests with coverage report
+```
+
+**Test Status:**
+- ✅ 6 test suites passing
+- ✅ 24 tests passing
+- ⏭️ 1 test suite skipped
+
+**Test Coverage:**
+- Core configuration management
+- Frontmatter parsing (YAML, TOML)
+- Markdown processing and shortcode conversion
+- Nostr event creation and signing
+- Media upload functionality
+
+### Project Structure
+
+```
+src/
+  ├── commands/     # CLI commands
+  ├── core/         # Core configuration
+  ├── lib/          # Utility libraries
+  ├── __tests__/    # Test files
+  └── index.ts      # Main entry point
+dist/               # Compiled JavaScript (generated)
+legacy/             # Legacy JavaScript code
 ```
 
 ## NIP Compliance
