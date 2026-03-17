@@ -22,6 +22,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node --esm src/index.ts",
+    "debug-sync": "node --loader ts-node/esm src/debug-sync.ts",
     "publish": "node dist/index.js publish",
     "dry-run": "DRY_RUN=1 node dist/index.js publish",
     "preview": "node dist/index.js preview",
@@ -33,9 +34,9 @@
     "config": "node dist/index.js config",
     "add-site": "node dist/index.js add-site",
     "update": "echo 'Update command is deprecated defined in dry-run or publish logic'",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
-    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --coverage"
   },
   "dependencies": {
     "crypto": "*",

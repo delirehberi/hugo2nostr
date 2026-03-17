@@ -71,14 +71,24 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
         const { getPublicKey } = await import('nostr-tools/pure');
         pubkey = getPublicKey(Uint8Array.from(Buffer.from(privateKey, 'hex')));
     } else if (siteConfig.author_id) {
-        // Try to decode if npub
-        if (siteConfig.author_id.startsWith('npub')) {
+        const id = siteConfig.author_id;
+        if (id.startsWith('npub')) {
             try {
-                const { data } = nip19.decode(siteConfig.author_id);
+                const { data } = nip19.decode(id);
                 pubkey = data as string;
             } catch { }
+        } else if (id.includes('@')) {
+            // NIP-05 identifier — resolve via HTTP
+            try {
+                const { queryProfile } = await import('nostr-tools/nip05');
+                const profile = await queryProfile(id);
+                pubkey = profile?.pubkey ?? null;
+                if (!pubkey) console.error(`❌ NIP-05 lookup returned no pubkey for: ${id}`);
+            } catch (e: any) {
+                console.error(`❌ NIP-05 lookup failed for ${id}: ${e.message}`);
+            }
         } else {
-            pubkey = siteConfig.author_id; // Assume hex
+            pubkey = id; // Assume hex
         }
     }
 
@@ -96,13 +106,22 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
 
     // Get all local nostr IDs
     const files = glob.sync(`${postsDir}/*.md`).filter(f => !f.endsWith('_index.md'));
-    const localIds = new Map();
+    const localIds = new Map<string, string>(); // event_id -> file
     for (const file of files) {
         try {
             const raw = fs.readFileSync(file, "utf-8");
             const meta = parseFrontmatter(raw);
             if (meta.nostr_id) {
-                localIds.set(meta.nostr_id, file);
+                try {
+                    const decoded = nip19.decode(meta.nostr_id);
+                    if (decoded.type === 'nevent') {
+                        localIds.set(decoded.data.id, file);
+                    } else if (decoded.type === 'note') {
+                        localIds.set(decoded.data as string, file);
+                    }
+                } catch {
+                    localIds.set(meta.nostr_id, file); // fallback: treat as raw id
+                }
             }
         } catch (e) {
             // ignore
@@ -140,7 +159,7 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
         // Actually SimplePool.querySync is likely `list` (which waits for EOSE).
         // Let's use `list` which is the standard method to "get all events matching filter".
 
-        if (configManager.options.verbose) console.log(`Querying relays: ${relays.join(', ')}`);
+        if (configManager.options.verbose) console.log(`Querying relays: ${relays.join(', ')} for pubkey: ${pubkey}`);
 
         events = await listEvents(pool, relays, [{
             kinds: [30023],
@@ -148,12 +167,18 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
             since
         }]);
 
+        if (configManager.options.verbose) console.log(`Received ${events.length} events from relays.`);
+
         events.sort((a, b) => b.created_at - a.created_at);
 
     } catch (err: any) {
         console.error(`❌ Failed to fetch from relays: ${err.message}`);
         await closePool(relays);
         return 2;
+    }
+
+    if (events.length === 0) {
+        console.warn("⚠️  No new events found on relays. Your local posts are up-to-date.");
     }
 
     console.log(`🌐 Found ${events.length} events on relays`);
@@ -171,7 +196,7 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
             kind: ev.kind,
         });
 
-        if (localIds.has(nevent)) {
+        if (localIds.has(ev.id)) {
             if (configManager.options.verbose) console.log(`${progress} ⏭️  Already exists: "${title}"`);
             stats.skipped++;
             continue;

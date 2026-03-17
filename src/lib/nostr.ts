@@ -72,18 +72,13 @@ export async function closePool(relays: string[]) {
 }
 
 export function listEvents(pool: SimplePool, relays: string[], filters: Filter[]): Promise<Event[]> {
-    return new Promise((resolve) => {
-        const events: Event[] = [];
-        const sub = pool.subscribeMany(relays, filters, {
-            onevent(event) {
-                events.push(event);
-            },
-            oneose() {
-                sub.close();
-                resolve(events);
-            }
-        });
-    });
+    // SimplePool.subscribeMany is unimplemented in this version of nostr-tools.
+    // Use querySync which subscribes, waits for EOSE from all relays, then resolves.
+    if (filters.length === 1) {
+        return (pool as any).querySync(relays, filters[0]);
+    }
+    return Promise.all(filters.map((f) => (pool as any).querySync(relays, f) as Promise<Event[]>))
+        .then((results) => results.flat());
 }
 
 export async function publishToNostr(

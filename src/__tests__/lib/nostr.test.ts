@@ -1,6 +1,8 @@
 
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
+jest.useFakeTimers();
+
 const mockPoolInstance = {
     publish: jest.fn<any>(),
     close: jest.fn(),
@@ -71,22 +73,26 @@ describe('Nostr Library', () => {
     });
 
     describe('listEvents', () => {
-        it('should return events from subscribeMany', async () => {
+        it('should return events from querySync', async () => {
             const events = [{ id: '1' }, { id: '2' }];
-            (mockPoolInstance.subscribeMany as jest.Mock).mockImplementation((relays: any, filters: any, callbacks: any) => {
-                // Execute callbacks asynchronously to allow sub assignments to complete
-                setTimeout(() => {
-                    callbacks.onevent(events[0]);
-                    callbacks.onevent(events[1]);
-                    callbacks.oneose();
-                }, 0);
-                return { close: jest.fn() };
-            });
+            (mockPoolInstance as any).querySync = jest.fn<any>().mockResolvedValue(events);
 
-            // Ensure getPool calls SimplePool constructor which returns mockPoolInstance
             const pool = await getPool();
-            const result = await listEvents(pool, [], []);
+            const result = await listEvents(pool, ['wss://relay.com'], [{ kinds: [30023] }]);
+            expect((mockPoolInstance as any).querySync).toHaveBeenCalledWith(['wss://relay.com'], { kinds: [30023] });
             expect(result).toEqual(events);
+        });
+
+        it('should merge results for multiple filters', async () => {
+            const eventsA = [{ id: '1' }];
+            const eventsB = [{ id: '2' }];
+            (mockPoolInstance as any).querySync = jest.fn<any>()
+                .mockResolvedValueOnce(eventsA)
+                .mockResolvedValueOnce(eventsB);
+
+            const pool = await getPool();
+            const result = await listEvents(pool, [], [{ kinds: [30023] }, { kinds: [1] }]);
+            expect(result).toEqual([{ id: '1' }, { id: '2' }]);
         });
     });
 
