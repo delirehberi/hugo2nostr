@@ -6,15 +6,76 @@ import matter from 'gray-matter';
 import { Event } from 'nostr-tools/pure';
 import { ConfigManager } from '../core/config.js';
 import { getPool, closePool, listEvents } from '../lib/nostr.js';
-import { parseFrontmatter, ISO2Date, Frontmatter } from '../lib/fs.js';
+import {
+    parseFrontmatter,
+    updateFrontmatter,
+    ISO2Date,
+    slugify,
+    isHexOrId,
+    Frontmatter
+} from '../lib/fs.js';
 
-function buildFrontmatter(event: Event, nevent: string): string {
+interface LocalPostInfo {
+    file: string;
+    meta: Frontmatter;
+    slug: string;
+    title: string;
+    eventId?: string;
+}
+
+function extractSlugFromUrl(urlStr: string): string | null {
+    try {
+        const u = new URL(urlStr);
+        const parts = u.pathname.split('/').filter(Boolean);
+        if (parts.length > 0) {
+            const lastPart = parts[parts.length - 1].replace(/\.html?$/, '');
+            return slugify(lastPart);
+        }
+    } catch {
+        const parts = urlStr.split('/').filter(Boolean);
+        if (parts.length > 0) {
+            const lastPart = parts[parts.length - 1].replace(/\.html?$/, '');
+            return slugify(lastPart);
+        }
+    }
+    return null;
+}
+
+export function deriveEventSlug(ev: Event, title: string, dTag?: string, rTag?: string): string {
+    // 1. If canonical URL exists in 'r' tag, try to extract slug
+    if (rTag) {
+        const urlSlug = extractSlugFromUrl(rTag);
+        if (urlSlug) return urlSlug;
+    }
+
+    // 2. If 'd' tag exists and is a readable slug (not a random hex/uuid/id)
+    if (dTag && !isHexOrId(dTag)) {
+        const dSlug = slugify(dTag);
+        if (dSlug) return dSlug;
+    }
+
+    // 3. Derive from title
+    if (title && title !== 'Untitled') {
+        const titleSlug = slugify(title);
+        if (titleSlug) return titleSlug;
+    }
+
+    // 4. Fallback to dTag if present
+    if (dTag) {
+        const dSlug = slugify(dTag);
+        if (dSlug) return dSlug;
+    }
+
+    // 5. Ultimate fallback
+    return `nostr-${ev.id.slice(0, 8)}`;
+}
+
+function buildFrontmatter(event: Event, nevent: string, targetSlug: string): string {
     const tags = event.tags || [];
     const title = tags.find((t) => t[0] === "title")?.[1] || "Untitled";
     const summary = tags.find((t) => t[0] === "summary")?.[1] || "";
     const image = tags.find((t) => t[0] === "image")?.[1];
     const publishedAt = tags.find((t) => t[0] === "published_at")?.[1];
-    const slug = tags.find((t) => t[0] === "d")?.[1];
     const tagValues = tags.filter((t) => t[0] === "t").map((t) => t[1]);
 
     // Use published_at if available, otherwise fall back to created_at
@@ -26,7 +87,7 @@ function buildFrontmatter(event: Event, nevent: string): string {
     const frontmatter: Frontmatter = {
         title,
         date: hugoDate,
-        ...(slug ? { slug } : {}),
+        slug: targetSlug,
         ...(image ? { hero_image: image } : {}),
         tags: tagValues,
         nostr_id: nevent,
@@ -39,30 +100,12 @@ function buildFrontmatter(event: Event, nevent: string): string {
     return matter.stringify(event.content, frontmatter);
 }
 
-function slugify(text: string): string {
-    return text
-        .toString()
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w\-]+/g, '')
-        .replace(/\-\-+/g, '-');
-}
-
 export async function syncCommand(configManager: ConfigManager): Promise<number> {
     const config = configManager.config;
     // Resolve site to get relays and posts dir
     const siteConfig = configManager.resolveSiteConfig();
     const postsDir = siteConfig.posts_dir;
     const relays = siteConfig.relays || [];
-    const siteConfigName = siteConfig.name; // resolved name
-
-    // We need pubkey to fetch our posts. 
-    // If we have private key, derive pubkey. 
-    // If not, we might fail unless we allow author_id to be used (if it's a hex/npub)
-    // The original code used `pubkey` exported from `init.js` which was derived from private key.
-    // If no private key, sync might not work for "my posts" unless we support author_id.
-    // Let's assume we need private key or author_id.
 
     let pubkey: string | null = null;
     const privateKey = configManager.getPrivateKey();
@@ -104,60 +147,76 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
         return 1;
     }
 
-    // Get all local nostr IDs
+    // Build multi-index map of existing local posts
     const files = glob.sync(`${postsDir}/*.md`).filter(f => !f.endsWith('_index.md'));
-    const localIds = new Map<string, string>(); // event_id -> file
+    const localByEventId = new Map<string, LocalPostInfo>();
+    const localBySlug = new Map<string, LocalPostInfo>();
+    const localByTitle = new Map<string, LocalPostInfo>();
+
     for (const file of files) {
         try {
             const raw = fs.readFileSync(file, "utf-8");
             const meta = parseFrontmatter(raw);
+            const filename = path.basename(file, '.md');
+            const metaSlug = meta.slug ? slugify(meta.slug) : '';
+            const fileSlug = slugify(filename);
+            const effectiveSlug = metaSlug || fileSlug;
+            const title = meta.title ? meta.title.trim() : '';
+            const normalizedTitle = slugify(title);
+
+            let eventId: string | undefined;
             if (meta.nostr_id) {
                 try {
                     const decoded = nip19.decode(meta.nostr_id);
                     if (decoded.type === 'nevent') {
-                        localIds.set(decoded.data.id, file);
+                        eventId = decoded.data.id;
                     } else if (decoded.type === 'note') {
-                        localIds.set(decoded.data as string, file);
+                        eventId = decoded.data as string;
                     }
                 } catch {
-                    localIds.set(meta.nostr_id, file); // fallback: treat as raw id
+                    eventId = meta.nostr_id;
                 }
             }
-        } catch (e) {
-            // ignore
+
+            const postInfo: LocalPostInfo = {
+                file,
+                meta,
+                slug: effectiveSlug,
+                title,
+                eventId
+            };
+
+            if (eventId) {
+                localByEventId.set(eventId, postInfo);
+            }
+            if (effectiveSlug) {
+                localBySlug.set(effectiveSlug, postInfo);
+            }
+            if (fileSlug) {
+                localBySlug.set(fileSlug, postInfo);
+            }
+            if (metaSlug) {
+                localBySlug.set(metaSlug, postInfo);
+            }
+            if (normalizedTitle) {
+                localByTitle.set(normalizedTitle, postInfo);
+            }
+        } catch {
+            // Ignore parse errors on individual files
         }
     }
 
     const pool = await getPool(configManager.options.verbose);
-    if (configManager.options.verbose) console.log(`📚 Found ${localIds.size} local posts`);
+    if (configManager.options.verbose) console.log(`📚 Found ${files.length} local posts`);
 
     const since = Math.floor(Date.now() / 1000) - 5 * 365 * 24 * 60 * 60; // 5 years
 
     let events: Event[] = [];
     try {
-        // Query one relay at a time or all? Original code used RELAYS[0] ??
-        // "pool.querySync([RELAYS[0]]..." 
-        // Let's try to fetch from all configured relays
         if (relays.length === 0) {
             console.error("❌ No relays configured.");
             return 1;
         }
-
-        // We use querySync which is not available in SimplePool of new nostr-tools versions typically?
-        // Wait, `nostr-tools/pool` SimplePool doesn't have querySync usually. 
-        // The original code used `pool.querySync[RELAYS, ...]`.
-        // Let's check `src/init.js` in original code. 
-        // It imported `SimplePool` from `nostr-tools/pool`.
-        // SimplePool has `querySync` in older versions or some forks? 
-        // In v2.7 (package.json says ^2.7.0), `querySync` might not be standard.
-        // It has `query` usually.
-        // `querySync` in original code (line 18 of debug.js) implies it waits for EOSE.
-        // We should use `query` or `subscribeMany` and wait.
-        // Or `querySync` if it exists.
-        // Let's assume standard `query` returns a promise resolving to events in some versions or we collect them.
-
-        // Actually SimplePool.querySync is likely `list` (which waits for EOSE).
-        // Let's use `list` which is the standard method to "get all events matching filter".
 
         if (configManager.options.verbose) console.log(`Querying relays: ${relays.join(', ')} for pubkey: ${pubkey}`);
 
@@ -188,7 +247,13 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
     for (let i = 0; i < events.length; i++) {
         const ev = events[i];
         const title = ev.tags.find((t) => t[0] === "title")?.[1] || "Untitled";
+        const dTag = ev.tags.find((t) => t[0] === "d")?.[1];
+        const rTag = ev.tags.find((t) => t[0] === "r")?.[1];
         const progress = `[${i + 1}/${events.length}]`;
+
+        const targetSlug = deriveEventSlug(ev, title, dTag, rTag);
+        const normTitle = slugify(title);
+        const dSlug = dTag ? slugify(dTag) : '';
 
         const nevent = nip19.neventEncode({
             id: ev.id,
@@ -196,20 +261,68 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
             kind: ev.kind,
         });
 
-        if (localIds.has(ev.id)) {
+        // Check if matching local post exists
+        let existing: LocalPostInfo | undefined;
+
+        // 1. Direct event ID match
+        if (localByEventId.has(ev.id)) {
+            existing = localByEventId.get(ev.id);
+        }
+        // 2. Slug match (targetSlug or dTag slug)
+        if (!existing && targetSlug && localBySlug.has(targetSlug)) {
+            existing = localBySlug.get(targetSlug);
+        }
+        if (!existing && dSlug && localBySlug.has(dSlug)) {
+            existing = localBySlug.get(dSlug);
+        }
+        // 3. Canonical URL path match
+        if (!existing && rTag) {
+            const urlSlug = extractSlugFromUrl(rTag);
+            if (urlSlug && localBySlug.has(urlSlug)) {
+                existing = localBySlug.get(urlSlug);
+            }
+        }
+        // 4. Normalized title match
+        if (!existing && normTitle && localByTitle.has(normTitle)) {
+            existing = localByTitle.get(normTitle);
+        }
+
+        if (existing) {
+            // Update nostr_id in frontmatter if missing or outdated
+            if (existing.meta.nostr_id !== nevent) {
+                try {
+                    updateFrontmatter(existing.file, { nostr_id: nevent });
+                    existing.meta.nostr_id = nevent;
+                    existing.eventId = ev.id;
+                    localByEventId.set(ev.id, existing);
+                } catch (e: any) {
+                    if (configManager.options.verbose) {
+                        console.warn(`  ⚠️ Could not update nostr_id for ${existing.file}: ${e.message}`);
+                    }
+                }
+            }
+
             if (configManager.options.verbose) console.log(`${progress} ⏭️  Already exists: "${title}"`);
             stats.skipped++;
             continue;
         }
 
-        const fm = buildFrontmatter(ev, nevent);
-        const slug =
-            ev.tags.find((t) => t[0] === "d")?.[1] ||
-            slugify(title) ||
-            `nostr-${ev.id.slice(0, 8)}`;
-
-        const file = path.join(postsDir, `${slug}.md`);
+        // Truly new post — write to disk
+        const fm = buildFrontmatter(ev, nevent, targetSlug);
+        const file = path.join(postsDir, `${targetSlug}.md`);
         fs.writeFileSync(file, fm, "utf-8");
+
+        // Register in local maps to avoid duplicates within the same sync run
+        const newPostInfo: LocalPostInfo = {
+            file,
+            meta: { title, slug: targetSlug, nostr_id: nevent },
+            slug: targetSlug,
+            title,
+            eventId: ev.id
+        };
+        localByEventId.set(ev.id, newPostInfo);
+        localBySlug.set(targetSlug, newPostInfo);
+        if (normTitle) localByTitle.set(normTitle, newPostInfo);
 
         stats.synced++;
         console.log(`${progress} ✅ "${title}"`);
@@ -220,3 +333,4 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
     console.log(`\n🎉 Done: ${stats.synced} synced, ${stats.skipped} already existed`);
     return 0;
 }
+

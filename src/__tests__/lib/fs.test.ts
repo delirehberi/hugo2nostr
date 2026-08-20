@@ -47,7 +47,7 @@ jest.unstable_mockModule('toml', () => ({
 
 
 // Import module under test DYNAMICALLY
-const { parseFrontmatter, stringifyFrontmatter, normalizeTags, normalizeDate } = await import('../../lib/fs.js');
+const { parseFrontmatter, stringifyFrontmatter, normalizeTags, normalizeDate, slugify, isHexOrId } = await import('../../lib/fs.js');
 
 describe('FS Library', () => {
     beforeEach(() => {
@@ -118,4 +118,42 @@ describe('FS Library', () => {
             expect(typeof result).toBe('string');
         });
     });
+
+    describe('slugify', () => {
+        it('should handle Turkish characters correctly', () => {
+            expect(slugify('Yazmak Zorundayım')).toBe('yazmak-zorundayim');
+            expect(slugify('Nostr Nasıl Gidiyor?')).toBe('nostr-nasil-gidiyor');
+            expect(slugify('İleri Düzey Şiirler & Çağdaş Öyküler')).toBe('ileri-duzey-siirler-cagdas-oykuler');
+            expect(slugify('ılık süt ve çikolatalı çörek')).toBe('ilik-sut-ve-cikolatali-corek');
+        });
+
+        it('should handle English and special characters', () => {
+            expect(slugify('Cloudflare OS, is it worth?')).toBe('cloudflare-os-is-it-worth');
+            expect(slugify('Hello World! 123')).toBe('hello-world-123');
+            expect(slugify('Café & Restaurant')).toBe('cafe-restaurant');
+        });
+
+        it('should trim and collapse hyphens', () => {
+            expect(slugify('  --foo---bar--  ')).toBe('foo-bar');
+            expect(slugify('')).toBe('');
+        });
+    });
+
+    describe('isHexOrId', () => {
+        it('should detect hex strings and UUIDs', () => {
+            expect(isHexOrId('2be69f5e')).toBe(true);
+            expect(isHexOrId('b7eab403')).toBe(true);
+            expect(isHexOrId('a1b2c3d4e5f60718')).toBe(true);
+            expect(isHexOrId('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+        });
+
+        it('should not mark readable titles or slugs as hex', () => {
+            expect(isHexOrId('nostr-nasil-gidiyor')).toBe(false);
+            expect(isHexOrId('cloudflare-os-is-it-worth')).toBe(false);
+            expect(isHexOrId('yazmak-zorundayim')).toBe(false);
+            expect(isHexOrId('hello')).toBe(false);
+            expect(isHexOrId('')).toBe(false);
+        });
+    });
 });
+

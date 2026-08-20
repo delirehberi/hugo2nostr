@@ -135,3 +135,40 @@ export function ISO2Date(isoString: string): string {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${diff}${pad(Math.floor(Math.abs(tzOffset) / 60))}:${pad(Math.abs(tzOffset) % 60)}`;
 }
+
+export function slugify(text: string): string {
+    if (!text) return '';
+
+    const charMap: Record<string, string> = {
+        'ı': 'i', 'İ': 'i', 'I': 'i',
+        'ş': 's', 'Ş': 's',
+        'ğ': 'g', 'Ğ': 'g',
+        'ü': 'u', 'Ü': 'u',
+        'ö': 'o', 'Ö': 'o',
+        'ç': 'c', 'Ç': 'c',
+    };
+
+    let str = String(text);
+    for (const [key, val] of Object.entries(charMap)) {
+        str = str.replaceAll(key, val);
+    }
+
+    return str
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+export function isHexOrId(str: string): boolean {
+    if (!str) return false;
+    const clean = str.trim().toLowerCase();
+    const hexPattern = /^[0-9a-f]{8,64}$/;
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    return hexPattern.test(clean) || uuidPattern.test(clean);
+}
+
