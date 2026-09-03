@@ -1,8 +1,11 @@
 # hugo2nostr
 
+[![nostr.org.tr](https://img.shields.io/badge/nostr.org.tr-A%20nostr.org.tr%20community%20initiative-7057ff?logo=nostr)](https://nostr.org.tr)
 [![Tests](https://github.com/delirehberi/hugo2nostr/actions/workflows/test.yml/badge.svg)](https://github.com/delirehberi/hugo2nostr/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
+
+[English](README.md) • [Türkçe](README.tr.md) • [Español](README.es.md)
 
 Publish [Hugo](https://gohugo.io) static blog posts to the [Nostr](https://nostr.com) network as NIP-23 (`kind:30023`) long-form articles, sync posts back from relays, and manage deletions — all from a single CLI.
 
@@ -105,6 +108,13 @@ make rebuild       # Clean dist/ and compile TypeScript
 2. Run tests and ensure clean build (`make test && make rebuild`).
 3. Submit a pull request.
 
+## Quick Links
+
+- 🌐 [nostr.org.tr](https://nostr.org.tr)
+- 📄 [NIP-23: Long-form Content](https://github.com/nostr-protocol/nips/blob/master/23.md)
+- 📦 [Repository on GitHub](https://github.com/delirehberi/hugo2nostr)
+
 ## License
 
 [MIT](LICENSE)
+
