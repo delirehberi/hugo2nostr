@@ -107,19 +107,25 @@ export async function publishToNostr(
 export async function deleteNote(
     relays: string[],
     privateKey: string,
-    noteId: string,
-    pubkey: string,
+    noteId?: string,
+    pubkey?: string,
     dTag?: string,
     kind: number = 30023
 ): Promise<string[]> {
-    const tags = [
-        ["e", noteId],
+    const { getPublicKey } = await import('nostr-tools/pure');
+    const authorPubkey = pubkey || getPublicKey(Uint8Array.from(Buffer.from(privateKey, 'hex')));
+
+    const tags: string[][] = [
         ["k", String(kind)],
     ];
 
+    if (noteId) {
+        tags.push(["e", noteId]);
+    }
+
     // For replaceable events (like kind:30023 articles), also include 'a' tag
     if (dTag) {
-        tags.push(["a", `${kind}:${pubkey}:${dTag}`]);
+        tags.push(["a", `${kind}:${authorPubkey}:${dTag}`]);
     }
 
     const deleteEvent: UnsignedEvent = {
@@ -127,7 +133,7 @@ export async function deleteNote(
         created_at: Math.floor(Date.now() / 1000),
         tags,
         content: "Deleted by the author",
-        pubkey: pubkey,
+        pubkey: authorPubkey,
     };
 
     const signedEvent = finalizeEvent(deleteEvent, Uint8Array.from(Buffer.from(privateKey, 'hex')));

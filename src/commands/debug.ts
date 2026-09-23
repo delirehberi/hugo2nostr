@@ -52,10 +52,14 @@ export async function debugCommand(configManager: ConfigManager): Promise<number
             const date = new Date(ev.created_at * 1000).toISOString();
             console.log(`- ${date} | ${title} (d: ${d})`);
             console.log(`  ID: ${ev.id}`);
-            try {
-                const nevent = nip19.neventEncode({ id: ev.id, relays, kind: 30023 });
-                console.log(`  NIP-19: ${nevent}`);
-            } catch { }
+            if (d) {
+                try {
+                    const naddr = nip19.naddrEncode({ identifier: d, pubkey: ev.pubkey, kind: 30023, relays });
+                    console.log(`  NIP-19: ${naddr}`);
+                } catch { }
+            } else {
+                console.log(`  NIP-19: ⚠️ Missing 'd' tag (does not fit NIP-19 / NIP-23)`);
+            }
             console.log('');
         });
 

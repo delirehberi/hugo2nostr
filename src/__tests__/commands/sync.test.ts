@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
+import * as nip19 from 'nostr-tools/nip19';
 import { deriveEventSlug } from '../../commands/sync.js';
 import { Event } from 'nostr-tools/pure';
 
@@ -69,5 +70,61 @@ describe('deriveEventSlug', () => {
         };
         const slug = deriveEventSlug(ev, 'Untitled', 'my-custom-slug');
         expect(slug).toBe('my-custom-slug');
+    });
+
+    it('should derive slug from title when dTag is missing completely', () => {
+        const ev: Event = {
+            id: 'abc123456789',
+            pubkey: 'pub123',
+            created_at: 1000,
+            kind: 30023,
+            tags: [
+                ['title', 'My Nostr Only Article']
+            ],
+            content: 'Hello',
+            sig: ''
+        };
+        const slug = deriveEventSlug(ev, 'My Nostr Only Article', undefined);
+        expect(slug).toBe('my-nostr-only-article');
+    });
+
+    it('should fallback to event id when dTag and title are missing', () => {
+        const ev: Event = {
+            id: '12345678abcdef',
+            pubkey: 'pub123',
+            created_at: 1000,
+            kind: 30023,
+            tags: [],
+            content: 'Hello',
+            sig: ''
+        };
+        const slug = deriveEventSlug(ev, '', undefined);
+        expect(slug).toBe('nostr-12345678');
+    });
+});
+
+describe('NIP-19 naddr article format', () => {
+    it('should correctly encode and decode naddr for kind:30023 article', async () => {
+        const nip19 = await import('nostr-tools/nip19');
+        const pubkey = '79c2ca0971bb2718a22a844f7158784d169637ec050c3d032f6881b2749ce3e1';
+        const dTag = 'my-first-post';
+        const relays = ['wss://relay.damus.io'];
+
+        const naddr = nip19.naddrEncode({
+            identifier: dTag,
+            pubkey,
+            kind: 30023,
+            relays
+        });
+
+        expect(naddr.startsWith('naddr1')).toBe(true);
+
+        const decoded = nip19.decode(naddr);
+        expect(decoded.type).toBe('naddr');
+        const data = decoded.data as nip19.AddressPointer;
+        expect(data.identifier).toBe(dTag);
+        expect(data.pubkey).toBe(pubkey);
+        expect(data.kind).toBe(30023);
+        expect(data.relays).toEqual(relays);
     });
 });

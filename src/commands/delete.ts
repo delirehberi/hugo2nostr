@@ -95,18 +95,27 @@ export async function deleteCommand(configManager: ConfigManager): Promise<numbe
 
         try {
             const decoded = nip19.decode(meta.nostr_id!);
-            if (decoded.type !== "nevent") {
+            const filename = path.basename(file, '.md');
+            let slug = meta.slug || filename;
+            let noteId: string | undefined;
+            let authorPubkey = pubkey;
+
+            if (decoded.type === "naddr") {
+                const data = decoded.data as nip19.AddressPointer;
+                slug = data.identifier || slug;
+                if (data.pubkey) authorPubkey = data.pubkey;
+            } else if (decoded.type === "nevent") {
+                const data = decoded.data as nip19.EventPointer;
+                noteId = data.id;
+                if (data.author) authorPubkey = data.author;
+            } else {
                 console.error(`${progress} ❌ Invalid nostr_id for "${title}"`);
                 stats.failed++;
                 continue;
             }
 
-            const data = decoded.data as nip19.EventPointer;
-            const filename = path.basename(file, '.md');
-            const slug = meta.slug || filename;
-
             console.log(`${progress} 🗑️  "${title}"`);
-            const successRelays = await deleteNote(relays, privateKey, data.id, pubkey, slug);
+            const successRelays = await deleteNote(relays, privateKey, noteId, authorPubkey, slug);
 
             if (successRelays.length > 0) {
                 stats.deleted++;
@@ -168,7 +177,7 @@ export async function deleteAllCommand(configManager: ConfigManager): Promise<nu
         try {
             const raw = fs.readFileSync(file, "utf-8");
             const meta = parseFrontmatter(raw);
-            if (meta.nostr_id && meta.nostr_id.startsWith("nevent1")) {
+            if (meta.nostr_id && meta.nostr_id.trim()) {
                 const filename = path.basename(file, '.md');
                 posts.push({
                     id: meta.nostr_id,
@@ -202,16 +211,26 @@ export async function deleteAllCommand(configManager: ConfigManager): Promise<nu
 
         try {
             const decoded = nip19.decode(post.id);
-            if (decoded.type !== "nevent") {
+            let slug = post.slug;
+            let noteId: string | undefined;
+            let authorPubkey = pubkey;
+
+            if (decoded.type === "naddr") {
+                const data = decoded.data as nip19.AddressPointer;
+                slug = data.identifier || slug;
+                if (data.pubkey) authorPubkey = data.pubkey;
+            } else if (decoded.type === "nevent") {
+                const data = decoded.data as nip19.EventPointer;
+                noteId = data.id;
+                if (data.author) authorPubkey = data.author;
+            } else {
                 console.error(`${progress} ❌ Invalid nostr_id for "${post.title}"`);
                 stats.failed++;
                 continue;
             }
 
-            const data = decoded.data as nip19.EventPointer;
-
             console.log(`${progress} 🗑️  "${post.title}"`);
-            const successRelays = await deleteNote(relays, privateKey, data.id, pubkey, post.slug);
+            const successRelays = await deleteNote(relays, privateKey, noteId, authorPubkey, slug);
 
             if (successRelays.length > 0) {
                 stats.deleted++;

@@ -79,7 +79,7 @@ export async function publishCommand(configManager: ConfigManager): Promise<numb
         }
 
         // Skip already published (unless dry-run)
-        const alreadyPublished = meta.nostr_id && meta.nostr_id.startsWith("nevent1");
+        const alreadyPublished = Boolean(meta.nostr_id && meta.nostr_id.trim());
         if (alreadyPublished && !dryRun) {
             stats.skipped++;
             if (!options.quiet) console.log(`${progress} ⏭️  Already published: "${title}"`);
@@ -188,13 +188,13 @@ export async function publishCommand(configManager: ConfigManager): Promise<numb
                 const successRelays = await publishToNostr(relays, signedEvent, options.verbose);
                 if (successRelays.length > 0) {
                     stats.published++;
-                    updateFrontmatter(file, {
-                        nostr_id: nip19.neventEncode({
-                            id: signedEvent.id,
-                            relays: relays,
-                            kind: 30023
-                        }),
+                    const naddr = nip19.naddrEncode({
+                        identifier: slug,
+                        pubkey: signedEvent.pubkey,
+                        kind: 30023,
+                        relays: relays
                     });
+                    updateFrontmatter(file, { nostr_id: naddr });
                 } else {
                     stats.failed++;
                 }

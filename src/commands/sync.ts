@@ -21,6 +21,7 @@ interface LocalPostInfo {
     slug: string;
     title: string;
     eventId?: string;
+    identifier?: string;
 }
 
 function extractSlugFromUrl(urlStr: string): string | null {
@@ -70,7 +71,7 @@ export function deriveEventSlug(ev: Event, title: string, dTag?: string, rTag?: 
     return `nostr-${ev.id.slice(0, 8)}`;
 }
 
-function buildFrontmatter(event: Event, nevent: string, targetSlug: string): string {
+function buildFrontmatter(event: Event, naddr: string, targetSlug: string): string {
     const tags = event.tags || [];
     const title = tags.find((t) => t[0] === "title")?.[1] || "Untitled";
     const summary = tags.find((t) => t[0] === "summary")?.[1] || "";
@@ -90,7 +91,7 @@ function buildFrontmatter(event: Event, nevent: string, targetSlug: string): str
         slug: targetSlug,
         ...(image ? { hero_image: image } : {}),
         tags: tagValues,
-        nostr_id: nevent,
+        nostr_id: naddr,
     };
 
     if (summary) {
@@ -149,6 +150,7 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
 
     // Build multi-index map of existing local posts
     const files = glob.sync(`${postsDir}/*.md`).filter(f => !f.endsWith('_index.md'));
+    const localByIdentifier = new Map<string, LocalPostInfo>();
     const localByEventId = new Map<string, LocalPostInfo>();
     const localBySlug = new Map<string, LocalPostInfo>();
     const localByTitle = new Map<string, LocalPostInfo>();
@@ -165,11 +167,14 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
             const normalizedTitle = slugify(title);
 
             let eventId: string | undefined;
+            let identifier: string | undefined;
             if (meta.nostr_id) {
                 try {
                     const decoded = nip19.decode(meta.nostr_id);
-                    if (decoded.type === 'nevent') {
-                        eventId = decoded.data.id;
+                    if (decoded.type === 'naddr') {
+                        identifier = (decoded.data as nip19.AddressPointer).identifier;
+                    } else if (decoded.type === 'nevent') {
+                        eventId = (decoded.data as nip19.EventPointer).id;
                     } else if (decoded.type === 'note') {
                         eventId = decoded.data as string;
                     }
@@ -183,9 +188,15 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
                 meta,
                 slug: effectiveSlug,
                 title,
-                eventId
+                eventId,
+                identifier
             };
 
+            if (identifier) {
+                localByIdentifier.set(identifier, postInfo);
+                const normIdent = slugify(identifier);
+                if (normIdent) localByIdentifier.set(normIdent, postInfo);
+            }
             if (eventId) {
                 localByEventId.set(eventId, postInfo);
             }
@@ -255,46 +266,104 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
         const normTitle = slugify(title);
         const dSlug = dTag ? slugify(dTag) : '';
 
-        const nevent = nip19.neventEncode({
-            id: ev.id,
-            relays: relays,
+        // Handle articles without a valid 'd' tag (non-compliant with NIP-19 naddr / NIP-23)
+        if (!dTag || dTag.trim() === "") {
+            // Check if article already exists locally by title, slug, or event ID
+            let existing: LocalPostInfo | undefined;
+            if (normTitle && localByTitle.has(normTitle)) {
+                existing = localByTitle.get(normTitle);
+            }
+            if (!existing && targetSlug && localBySlug.has(targetSlug)) {
+                existing = localBySlug.get(targetSlug);
+            }
+            if (!existing && localByEventId.has(ev.id)) {
+                existing = localByEventId.get(ev.id);
+            }
+
+            if (existing) {
+                if (configManager.options.verbose) {
+                    console.log(`${progress} ⏭️  Already exists locally: "${title}"`);
+                }
+                stats.skipped++;
+                continue;
+            }
+
+            // Article does not exist locally — rescue and save so it is not lost!
+            if (!configManager.options.quiet) {
+                console.warn(`${progress} ⚠️  Article "${title}" (${ev.id.slice(0, 8)}) on Nostr is missing 'd' tag and was NOT found locally. Rescuing to "${targetSlug}.md" to prevent data loss!`);
+            }
+
+            const fm = buildFrontmatter(ev, "", targetSlug);
+            const file = path.join(postsDir, `${targetSlug}.md`);
+            fs.writeFileSync(file, fm, "utf-8");
+
+            const rescuedPostInfo: LocalPostInfo = {
+                file,
+                meta: { title, slug: targetSlug, nostr_id: "" },
+                slug: targetSlug,
+                title,
+                eventId: ev.id
+            };
+            localBySlug.set(targetSlug, rescuedPostInfo);
+            if (normTitle) localByTitle.set(normTitle, rescuedPostInfo);
+            localByEventId.set(ev.id, rescuedPostInfo);
+
+            stats.synced++;
+            console.log(`${progress} ✅ Rescued "${title}" -> ${targetSlug}.md`);
+            continue;
+        }
+
+        const naddr = nip19.naddrEncode({
+            identifier: dTag,
+            pubkey: ev.pubkey,
             kind: ev.kind,
+            relays: relays,
         });
 
         // Check if matching local post exists
         let existing: LocalPostInfo | undefined;
 
-        // 1. Direct event ID match
-        if (localByEventId.has(ev.id)) {
+        // 1. Direct identifier / dTag match
+        if (localByIdentifier.has(dTag)) {
+            existing = localByIdentifier.get(dTag);
+        }
+        if (!existing && dSlug && localByIdentifier.has(dSlug)) {
+            existing = localByIdentifier.get(dSlug);
+        }
+        // 2. Direct event ID match (legacy)
+        if (!existing && localByEventId.has(ev.id)) {
             existing = localByEventId.get(ev.id);
         }
-        // 2. Slug match (targetSlug or dTag slug)
+        // 3. Slug match (targetSlug or dTag slug)
         if (!existing && targetSlug && localBySlug.has(targetSlug)) {
             existing = localBySlug.get(targetSlug);
         }
         if (!existing && dSlug && localBySlug.has(dSlug)) {
             existing = localBySlug.get(dSlug);
         }
-        // 3. Canonical URL path match
+        // 4. Canonical URL path match
         if (!existing && rTag) {
             const urlSlug = extractSlugFromUrl(rTag);
             if (urlSlug && localBySlug.has(urlSlug)) {
                 existing = localBySlug.get(urlSlug);
             }
         }
-        // 4. Normalized title match
+        // 5. Normalized title match
         if (!existing && normTitle && localByTitle.has(normTitle)) {
             existing = localByTitle.get(normTitle);
         }
 
         if (existing) {
-            // Update nostr_id in frontmatter if missing or outdated
-            if (existing.meta.nostr_id !== nevent) {
+            // Auto-upgrade nostr_id in frontmatter if missing or outdated (e.g. legacy nevent1)
+            if (existing.meta.nostr_id !== naddr) {
                 try {
-                    updateFrontmatter(existing.file, { nostr_id: nevent });
-                    existing.meta.nostr_id = nevent;
-                    existing.eventId = ev.id;
-                    localByEventId.set(ev.id, existing);
+                    updateFrontmatter(existing.file, { nostr_id: naddr });
+                    existing.meta.nostr_id = naddr;
+                    existing.identifier = dTag;
+                    localByIdentifier.set(dTag, existing);
+                    if (configManager.options.verbose) {
+                        console.log(`  🔄 Upgraded nostr_id to naddr for ${existing.file}`);
+                    }
                 } catch (e: any) {
                     if (configManager.options.verbose) {
                         console.warn(`  ⚠️ Could not update nostr_id for ${existing.file}: ${e.message}`);
@@ -308,19 +377,21 @@ export async function syncCommand(configManager: ConfigManager): Promise<number>
         }
 
         // Truly new post — write to disk
-        const fm = buildFrontmatter(ev, nevent, targetSlug);
+        const fm = buildFrontmatter(ev, naddr, targetSlug);
         const file = path.join(postsDir, `${targetSlug}.md`);
         fs.writeFileSync(file, fm, "utf-8");
 
         // Register in local maps to avoid duplicates within the same sync run
         const newPostInfo: LocalPostInfo = {
             file,
-            meta: { title, slug: targetSlug, nostr_id: nevent },
+            meta: { title, slug: targetSlug, nostr_id: naddr },
             slug: targetSlug,
             title,
+            identifier: dTag,
             eventId: ev.id
         };
-        localByEventId.set(ev.id, newPostInfo);
+        localByIdentifier.set(dTag, newPostInfo);
+        if (dSlug) localByIdentifier.set(dSlug, newPostInfo);
         localBySlug.set(targetSlug, newPostInfo);
         if (normTitle) localByTitle.set(normTitle, newPostInfo);
 

@@ -110,6 +110,29 @@ describe('Nostr Library', () => {
             expect(finalizeEvent).toHaveBeenCalled();
             expect(mockPoolInstance.publish).toHaveBeenCalled();
         });
+
+        it('should publish deletion event for addressable event with dTag', async () => {
+            const relays = ['wss://r1'];
+            const privKey = 'privkey';
+            const pubkey = 'pubkey';
+            const dTag = 'my-article-slug';
+
+            (mockPoolInstance.publish as jest.Mock<any>).mockResolvedValue(undefined);
+
+            await deleteNote(relays, privKey, undefined, pubkey, dTag, 30023);
+
+            expect(finalizeEvent).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    kind: 5,
+                    tags: expect.arrayContaining([
+                        ['k', '30023'],
+                        ['a', '30023:pubkey:my-article-slug']
+                    ])
+                }),
+                expect.anything()
+            );
+            expect(mockPoolInstance.publish).toHaveBeenCalled();
+        });
     });
 
     describe('createNip98Auth', () => {
