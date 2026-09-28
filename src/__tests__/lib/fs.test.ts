@@ -94,6 +94,16 @@ describe('FS Library', () => {
             expect(result).toContain('---');
             expect(result).toContain('Content');
         });
+
+        it('should stringify to TOML with l tag', () => {
+            const data = { title: 'Hello', l: 'tr' };
+            const content = 'Content';
+            const result = stringifyFrontmatter(data, content, 'toml');
+            expect(result).toContain('title = "Hello"');
+            expect(result).toContain('l = "tr"');
+            expect(result).toContain('+++');
+            expect(result).toContain('Content');
+        });
     });
 
     describe('normalizeTags', () => {

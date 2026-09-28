@@ -92,10 +92,11 @@ function generateHtml(event, meta, previewImageUrl) {
     const npub = nip19.npubEncode(event.pubkey);
     const nevent = nip19.neventEncode({ id: event.id, kind: 30023 });
 
+    const lang = tags.l || meta.l || meta.language || meta.lang || 'en';
     const contentHtml = markdownToHtml(event.content);
 
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -529,6 +530,15 @@ export async function preview(targetFile) {
     }
 
     tagsArray.push(["published_at", String(publishedAt)]);
+
+    const language = meta.l || meta.language || meta.lang;
+    if (language) {
+        if (Array.isArray(language)) {
+            tagsArray.push(["l", ...language.map(String)]);
+        } else if (typeof language === "string" && language.trim()) {
+            tagsArray.push(["l", language.trim()]);
+        }
+    }
 
     for (const tag of allTags) {
         tagsArray.push(["t", tag]);

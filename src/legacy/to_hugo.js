@@ -12,6 +12,7 @@ function buildFrontmatter(event, nevent) {
     const image = tags.find((t) => t[0] === "image")?.[1];
     const publishedAt = tags.find((t) => t[0] === "published_at")?.[1];
     const slug = tags.find((t) => t[0] === "d")?.[1];
+    const langTag = tags.find((t) => t[0] === "l")?.[1];
     const tagValues = tags.filter((t) => t[0] === "t").map((t) => t[1]);
 
     // Use published_at if available, otherwise fall back to created_at
@@ -26,6 +27,7 @@ function buildFrontmatter(event, nevent) {
         date: hugoDate,
         ...(slug ? { slug } : {}),
         ...(image ? { hero_image: image } : {}),
+        ...(langTag ? { l: langTag } : {}),
         tags: tagValues,
         nostr_id: nevent,
     };

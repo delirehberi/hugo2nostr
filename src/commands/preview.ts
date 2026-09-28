@@ -208,9 +208,10 @@ function renderList(posts: any[], siteName: string) {
 }
 
 function renderPost(meta: any, contentHtml: string) {
+  const language = meta.l || meta.language || meta.lang || '';
   return `
 <!DOCTYPE html>
-<html>
+<html lang="${language || 'en'}">
 <head>
   <meta charset="utf-8">
   <title>${meta.title}</title>
@@ -230,6 +231,7 @@ function renderPost(meta: any, contentHtml: string) {
     <h1>${meta.title}</h1>
     <div class="meta">
       Posted on ${normalizeDate(meta.date || '').split('T')[0]}
+      ${language ? `| Lang: ${language}` : ''}
       ${meta.tags ? `| Tags: ${normalizeTagsFS(meta.tags).join(', ')}` : ''}
     </div>
     ${meta.description ? `<p class="lead">${meta.description}</p>` : ''}

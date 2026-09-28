@@ -175,6 +175,15 @@ export async function publish() {
             tagsArray.push(["updated_at", String(now)]);
         }
 
+        const language = meta.l || meta.language || meta.lang;
+        if (language) {
+            if (Array.isArray(language)) {
+                tagsArray.push(["l", ...language.map(String)]);
+            } else if (typeof language === "string" && language.trim()) {
+                tagsArray.push(["l", language.trim()]);
+            }
+        }
+
         // Add all topic/tag entries
         for (const tag of allTags) {
             tagsArray.push(["t", tag]);

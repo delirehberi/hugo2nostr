@@ -1,6 +1,7 @@
 import { describe, it, expect } from '@jest/globals';
 import * as nip19 from 'nostr-tools/nip19';
-import { deriveEventSlug } from '../../commands/sync.js';
+import { deriveEventSlug, buildFrontmatter } from '../../commands/sync.js';
+import { parseFrontmatter } from '../../lib/fs.js';
 import { Event } from 'nostr-tools/pure';
 
 describe('deriveEventSlug', () => {
@@ -126,5 +127,58 @@ describe('NIP-19 naddr article format', () => {
         expect(data.pubkey).toBe(pubkey);
         expect(data.kind).toBe(30023);
         expect(data.relays).toEqual(relays);
+    });
+});
+
+describe('buildFrontmatter', () => {
+    it('should include l tag as language in frontmatter when present in event tags', () => {
+        const ev: Event = {
+            id: 'ev123',
+            pubkey: 'pub123',
+            created_at: 1700000000,
+            kind: 30023,
+            tags: [
+                ['title', 'Türkçe Makale'],
+                ['d', 'turkce-makale'],
+                ['l', 'tr'],
+                ['t', 'nostr'],
+                ['t', 'bitcoin'],
+                ['summary', 'Bu bir özet']
+            ],
+            content: 'Makale içeriği burada...',
+            sig: ''
+        };
+
+        const fmString = buildFrontmatter(ev, 'naddr1test', 'turkce-makale');
+        const parsed = parseFrontmatter(fmString);
+
+        expect(parsed.title).toBe('Türkçe Makale');
+        expect(parsed.slug).toBe('turkce-makale');
+        expect(parsed.l).toBe('tr');
+        expect(parsed.description).toBe('Bu bir özet');
+        expect(parsed.tags).toEqual(['nostr', 'bitcoin']);
+        expect(parsed.nostr_id).toBe('naddr1test');
+        expect(parsed.body?.trim()).toBe('Makale içeriği burada...');
+    });
+
+    it('should handle events without l tag gracefully', () => {
+        const ev: Event = {
+            id: 'ev456',
+            pubkey: 'pub456',
+            created_at: 1700000000,
+            kind: 30023,
+            tags: [
+                ['title', 'English Post'],
+                ['d', 'english-post']
+            ],
+            content: 'English content...',
+            sig: ''
+        };
+
+        const fmString = buildFrontmatter(ev, 'naddr2test', 'english-post');
+        const parsed = parseFrontmatter(fmString);
+
+        expect(parsed.title).toBe('English Post');
+        expect(parsed.l).toBeUndefined();
     });
 });

@@ -16,6 +16,9 @@ export interface Frontmatter {
     featured_image?: string;
     nostr_id?: string;
     nostr_image?: string;
+    l?: string;
+    language?: string;
+    lang?: string;
     body?: string; // Content body
     type?: "yaml" | "toml" | "plain";
     [key: string]: any;
